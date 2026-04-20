@@ -48,6 +48,23 @@ class ModWorkspaceService {
         }
     }
 
+    /**
+     * Discovers user-provided mod files (`*.mod`) from [root].
+     *
+     * The app is a shell – it ships no mods itself. Users create and place
+     * their `.mod` files directly in the workspace directory they chose at
+     * startup. This method lists whatever the user has put there.
+     */
+    fun listMods(root: Path): List<Path> {
+        if (!Files.isDirectory(root)) return emptyList()
+        Files.list(root).use { paths ->
+            return paths
+                .filter { it.isRegularFile() && it.extension == "mod" }
+                .sorted(compareBy { it.name.lowercase() })
+                .toList()
+        }
+    }
+
     fun unpackApk(apkPath: Path, destinationRoot: Path): Path {
         require(apkPath.extension.lowercase() == "apk") {
             "Only .apk files are supported, but received extension: ${apkPath.extension.ifBlank { "<none>" }}"

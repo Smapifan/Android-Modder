@@ -41,6 +41,25 @@ class ModWorkspaceServiceTest {
     }
 
     @Test
+    fun `lists user-provided mod files`() {
+        val root = Files.createTempDirectory("mod-test")
+        Files.writeString(root.resolve("ExtraCheats.mod"), "cheat_data")
+        Files.writeString(root.resolve("CoolMod.mod"), "mod_data")
+        Files.writeString(root.resolve("readme.txt"), "ignored")
+
+        val mods = service.listMods(root)
+
+        assertEquals(2, mods.size)
+        assertEquals(listOf("CoolMod.mod", "ExtraCheats.mod"), mods.map { it.fileName.toString() })
+    }
+
+    @Test
+    fun `listMods returns empty list when directory does not exist`() {
+        val nonExistent = Path.of("/tmp/does-not-exist-${System.nanoTime()}")
+        assertEquals(emptyList(), service.listMods(nonExistent))
+    }
+
+    @Test
     fun `unpacks apk zip safely`() {
         val root = Files.createTempDirectory("apk-test")
         val apk = root.resolve("example.apk")
