@@ -3,10 +3,15 @@ package com.smapifan.androidmodder.service
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.CheatOperation
 import com.smapifan.androidmodder.model.GameLaunchConfig
+import com.smapifan.androidmodder.model.ModDefinition
+import com.smapifan.androidmodder.model.ModPatch
+import com.smapifan.androidmodder.model.OverlayAction
+import com.smapifan.androidmodder.model.TriggerMode
 import java.nio.file.Files
 import kotlin.io.path.createDirectories
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class GameLauncherServiceTest {
@@ -284,5 +289,119 @@ class GameLauncherServiceTest {
         service.launch(ws, baseConfig().copy(useRootForData = true, importAfterExit = true))
 
         assertTrue(fake.commands.filter { it.second }.size >= 2)
+    }
+
+    // ── trigger mode: ON_LAUNCH vs ON_DEMAND / ON_AUTOSAVE ──────────────────
+
+    @Test
+    fun `launch only auto-applies ON_LAUNCH mods during pre-launch`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("launcher-trigger-filter")
+
+        val saveDir = ws
+            .resolve("com.gram.mergedragons")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.gram.mergedragons")
+            .resolve("files")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "coins=100\ngems=10")
+
+        // ON_LAUNCH mod – should be applied at pre-launch
+        Files.writeString(ws.resolve("LaunchMod.mod"), """
+            {
+              "name": "LaunchMod",
+              "gameId": "com.gram.mergedragons",
+              "triggerMode": "ON_LAUNCH",
+              "patches": [{"field":"coins","operation":"ADD","amount":500}]
+            }
+        """.trimIndent())
+
+        // ON_DEMAND mod – must NOT be applied at pre-launch
+        Files.writeString(ws.resolve("DemandMod.mod"), """
+            {
+              "name": "DemandMod",
+              "gameId": "com.gram.mergedragons",
+              "triggerMode": "ON_DEMAND",
+              "patches": [{"field":"gems","operation":"SET","amount":9999}],
+              "overlayActions": [{"label":"Max Gems","patchFields":["gems"]}]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
+        assertEquals("600",  fields["coins"], "ON_LAUNCH mod should have added 500 coins")
+        assertEquals("10",   fields["gems"],  "ON_DEMAND mod must NOT fire at pre-launch")
+    }
+
+    @Test
+    fun `launch with overlayService starts session and waits for game exit`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("launcher-overlay-session")
+
+        // A fake overlay service where the game "exits" immediately
+        val overlayService = object : ModOverlayService(
+            shell                  = fake,
+            autosaveIntervalMs     = 100L,
+            processCheckIntervalMs = 50L
+        ) {
+            override fun isGameRunning(packageName: String): Boolean = false
+        }
+
+        val service = GameLauncherService(
+            workspaceService = ModWorkspaceService(),
+            cheatApplier     = CheatApplier(),
+            modLoader        = ModLoader(),
+            shell            = fake,
+            overlayService   = overlayService
+        )
+
+        // Should complete without hanging
+        val result = service.launch(ws, baseConfig())
+        assertTrue(result.success)
+    }
+
+    @Test
+    fun `launch with overlayService does not apply ON_DEMAND mod at pre-launch`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("launcher-overlay-no-prelaunch")
+
+        val saveDir = ws
+            .resolve("com.gram.mergedragons")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.gram.mergedragons")
+            .resolve("files")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "gems=0")
+
+        Files.writeString(ws.resolve("DemandGems.mod"), """
+            {
+              "name": "DemandGems",
+              "gameId": "com.gram.mergedragons",
+              "triggerMode": "ON_DEMAND",
+              "patches": [{"field":"gems","operation":"SET","amount":9999}],
+              "overlayActions": [{"label":"Max Gems","patchFields":["gems"]}]
+            }
+        """.trimIndent())
+
+        val overlayService = object : ModOverlayService(
+            shell                  = fake,
+            autosaveIntervalMs     = 100L,
+            processCheckIntervalMs = 50L
+        ) {
+            override fun isGameRunning(packageName: String): Boolean = false
+        }
+
+        val service = GameLauncherService(
+            workspaceService = ModWorkspaceService(),
+            cheatApplier     = CheatApplier(),
+            modLoader        = ModLoader(),
+            shell            = fake,
+            overlayService   = overlayService
+        )
+
+        service.launch(ws, baseConfig())
+
+        val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
+        assertEquals("0", fields["gems"], "ON_DEMAND mod must not fire at pre-launch even with overlayService")
     }
 }

@@ -2,67 +2,84 @@ package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.GameLaunchConfig
+import com.smapifan.androidmodder.model.SaveDataAction
+import com.smapifan.androidmodder.model.TriggerMode
 import java.nio.file.Path
 
 /**
  * Orchestrates the full cheat/mod launch cycle for a game.
  *
- * ## How it works
- *
- * Android-Modder acts as a **launcher**: instead of opening the game directly,
- * the user launches it through this app. The sequence is:
+ * ## Launch cycle
  *
  * ```
- * ┌──────────────────────────────────────────────────────────┐
- * │  1. PRE-LAUNCH                                           │
- * │     • exportAppData()      (ROOT – /data/data/<pkg>/)    │
- * │     • exportExternalData() (no root – /sdcard/…)         │
- * │     • ALL matching cheats from [cheats] applied          │
- * │     • ALL matching *.mod files from workspace applied    │
- * │     • optional extra preHooks run                        │
- * ├──────────────────────────────────────────────────────────┤
- * │  2. GAME LAUNCH                                          │
- * │     • `am start -n <package>/<activity>` via shell       │
- * │     • game runs in its normal sandbox, unmodified        │
- * │     • game reads the (now-modified) save files           │
- * ├──────────────────────────────────────────────────────────┤
- * │  3. POST-EXIT  (importAfterExit = true)                  │
- * │     • optional postHooks run                             │
- * │     • importAppData()       (ROOT required)              │
- * │     • importExternalData()  (no root)                    │
- * └──────────────────────────────────────────────────────────┘
+ * ┌──────────────────────────────────────────────────────────────────────────┐
+ * │  1. PRE-LAUNCH                                                           │
+ * │     • exportInternalWithRoot()  (ROOT – /data/data/<pkg>/)              │
+ * │     • exportExternalData()      (no root – /sdcard/Android/data/<pkg>/) │
+ * │     • All matching cheats from [cheats] applied to workspace            │
+ * │     • All matching *.mod files with triggerMode=ON_LAUNCH applied       │
+ * │       (mods with ON_DEMAND / ON_AUTOSAVE are deferred to overlay)       │
+ * │     • Per-mod SaveDataAction.IMPORT: workspace → external storage       │
+ * │     • Optional extra preHooks                                            │
+ * ├──────────────────────────────────────────────────────────────────────────┤
+ * │  2. GAME LAUNCH                                                          │
+ * │     • `am start -n <package>/<activity>` via shell                      │
+ * │     • Game runs in its **normal sandbox**, completely unmodified        │
+ * │     • Game reads the (now-patched) save files                           │
+ * ├──────────────────────────────────────────────────────────────────────────┤
+ * │  2b. OVERLAY SESSION  (only when overlayService is provided)            │
+ * │     • ModOverlayService session started                                  │
+ * │     • ON_AUTOSAVE mods polled at regular intervals                      │
+ * │     • ON_DEMAND buttons available to the user via overlay HUD           │
+ * │     • Blocks until game process exits                                    │
+ * ├──────────────────────────────────────────────────────────────────────────┤
+ * │  3. POST-EXIT  (importAfterExit = true)                                 │
+ * │     • Optional postHooks                                                 │
+ * │     • importInternalWithRoot()  (ROOT required)                         │
+ * │     • importExternalData()      (no root)                               │
+ * └──────────────────────────────────────────────────────────────────────────┘
  * ```
  *
- * Cheats and mods are applied **automatically** – no manual wiring required.
- * The game binary is **never patched**.
+ * Cheats and ON_LAUNCH mods are applied **automatically** – no wiring needed.
+ * The real game binary is **never patched**.
  *
- * @param cheats         all known cheat definitions (e.g. loaded from Cheats.json);
- *                       only cheats whose [CheatDefinition.appName] matches the
- *                       launched game's package name are applied
+ * @param cheats           all known cheat definitions (only those whose
+ *                         [CheatDefinition.appName] matches are applied)
  * @param workspaceService manages workspace directories and file copies
- * @param cheatApplier   applies individual cheat operations to save files
- * @param modLoader      discovers and applies *.mod files
- * @param shell          executes shell commands (and root commands via `su`)
+ * @param cheatApplier     applies individual cheat operations to save files
+ * @param modLoader        discovers and applies `*.mod` files
+ * @param shell            executes shell commands (and root commands via `su`)
+ * @param overlayService   optional overlay coordinator; when supplied the launcher
+ *                         waits for the game to exit via process monitoring
+ *                         before entering the post-exit phase
  */
 class GameLauncherService(
     private val cheats: List<CheatDefinition> = emptyList(),
     private val workspaceService: ModWorkspaceService = ModWorkspaceService(),
     private val cheatApplier: CheatApplier = CheatApplier(),
     private val modLoader: ModLoader = ModLoader(),
-    private val shell: ShellExecutor = ShellExecutor()
+    private val shell: ShellExecutor = ShellExecutor(),
+    private val overlayService: ModOverlayService? = null
 ) {
 
     /**
      * Runs the full launch cycle for [config].
      *
-     * Cheats and mods are applied automatically before the game starts:
-     * - All entries in [cheats] whose `appName` equals [GameLaunchConfig.packageName]
-     * - All `*.mod` files in [workspace] whose `gameId` equals [GameLaunchConfig.packageName]
+     * ### Mod trigger modes
+     * - **ON_LAUNCH** mods are applied during pre-launch (step 1), same as cheats.
+     * - **ON_AUTOSAVE** and **ON_DEMAND** mods are handed off to [overlayService]
+     *   and are applied while the game is running (step 2b).  If no
+     *   [overlayService] is configured these mods are silently skipped.
      *
-     * @param workspace  the workspace root directory
-     * @param config     launch configuration (package, command, root flag, …)
-     * @param preHooks   optional extra callbacks invoked after auto-cheats/mods but before launch
-     * @param postHooks  optional callbacks invoked after the game exits (before import)
+     * ### saveDataAction wiring
+     * After a mod's ON_LAUNCH patches are applied, if the mod declares
+     * [SaveDataAction.IMPORT] the modified workspace data is immediately pushed
+     * to external storage so the game finds the new values the moment it starts.
+     *
+     * @param workspace  workspace root directory
+     * @param config     launch parameters (package name, shell command, root flag, …)
+     * @param preHooks   optional callbacks run after auto-cheats/mods but before launch
+     * @param postHooks  optional callbacks run after game exit, before import
      * @return the [ShellResult] of the `am start` command
      */
     fun launch(
@@ -74,35 +91,70 @@ class GameLauncherService(
         val sdcard = java.nio.file.Path.of(config.externalStorageRoot)
         val appDir = workspaceService.appWorkspace(workspace, config.packageName)
 
-        // ── 1. PRE-LAUNCH: export ─────────────────────────────────────────
+        // ── 1. PRE-LAUNCH: export data to workspace ───────────────────────────
         if (config.useRootForData) {
             exportInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
         }
         workspaceService.exportExternalData(workspace, sdcard, config.packageName)
 
-        // ── 1b. AUTO-APPLY CHEATS ─────────────────────────────────────────
-        val matchingCheats = cheats.filter { it.appName == config.packageName }
-        matchingCheats.forEach { cheat ->
-            runCatching { cheatApplier.apply(appDir, cheat) }
+        // ── 1b. AUTO-APPLY CHEATS ────────────────────────────────────────────
+        cheats
+            .filter { it.appName == config.packageName }
+            .forEach { cheat -> runCatching { cheatApplier.apply(appDir, cheat) } }
+
+        // ── 1c. AUTO-APPLY ON_LAUNCH MODS from workspace ─────────────────────
+        // Mods with other trigger modes are handled by the overlay session (step 2b).
+        val allActiveMods = workspaceService.listMods(workspace).mapNotNull { modPath ->
+            runCatching { modLoader.load(modPath) }.getOrNull()
+                ?.takeIf { it.gameId == config.packageName }
         }
 
-        // ── 1c. AUTO-APPLY MODS from workspace ────────────────────────────
-        workspaceService.listMods(workspace).forEach { modPath ->
-            runCatching {
-                val mod = modLoader.load(modPath)
-                if (mod.gameId == config.packageName) {
-                    modLoader.applyMod(mod, appDir)
-                }
+        allActiveMods
+            .filter { it.triggerMode == TriggerMode.ON_LAUNCH }
+            .forEach { mod ->
+                runCatching { modLoader.applyMod(mod, appDir) }
+                    .onSuccess {
+                        // Honour per-mod IMPORT directive: push to device before launch
+                        if (mod.saveDataAction == SaveDataAction.IMPORT) {
+                            runCatching {
+                                workspaceService.importExternalData(workspace, sdcard, config.packageName)
+                            }
+                        }
+                    }
+            }
+
+        // ── 1d. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
+        preHooks.forEach { it() }
+
+        // ── 2. LAUNCH GAME ───────────────────────────────────────────────────
+        val launchResult = shell.execute(config.launchCommand)
+
+        // ── 2b. OVERLAY SESSION (optional) ───────────────────────────────────
+        // Start the overlay session for ON_DEMAND / ON_AUTOSAVE mods and block
+        // until the game process exits.  Skipped entirely when overlayService
+        // is null (preserves the original synchronous behaviour for tests and
+        // callers that do not need process monitoring).
+        if (overlayService != null) {
+            val overlayMods = allActiveMods.filter {
+                it.triggerMode == TriggerMode.ON_DEMAND ||
+                it.triggerMode == TriggerMode.ON_AUTOSAVE
+            }
+            val session = overlayService.startSession(
+                mods               = overlayMods,
+                appWorkspaceDir    = appDir,
+                packageName        = config.packageName,
+                workspace          = workspace,
+                externalStorageRoot = sdcard
+            )
+            try {
+                // Block until the game process terminates
+                session.waitForGameExit()
+            } finally {
+                session.stop()
             }
         }
 
-        // ── 1d. OPTIONAL EXTRA PRE-HOOKS ──────────────────────────────────
-        preHooks.forEach { it() }
-
-        // ── 2. LAUNCH GAME ────────────────────────────────────────────────
-        val launchResult = shell.execute(config.launchCommand)
-
-        // ── 3. POST-EXIT: import ──────────────────────────────────────────
+        // ── 3. POST-EXIT: import data back to device ─────────────────────────
         if (config.importAfterExit) {
             postHooks.forEach { it() }
 
@@ -115,21 +167,25 @@ class GameLauncherService(
         return launchResult
     }
 
-    // --- root shell helpers -----------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Root shell helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Copies `/data/data/<pkg>/` and `/data/<pkg>/` into the workspace using
      * a root shell command (`su -c "cp -r ..."`).
+     *
+     * The workspace mirror structure is:
+     * - `/data/data/<pkg>/`  → `<workspace>/<pkg>/internal/data/data/<pkg>/`
+     * - `/data/<pkg>/`       → `<workspace>/<pkg>/internal/data/<pkg>/`
      */
     internal fun exportInternalWithRoot(packageName: String, deviceDataRoot: String, workspace: Path) {
         val appDest = workspaceService.appWorkspace(workspace, packageName)
 
-        // /data/data/<pkg>/ → <workspace>/<pkg>/internal/data/data/<pkg>/
         val primaryDest = appDest.resolve("internal").resolve("data").resolve("data").resolve(packageName)
         primaryDest.toFile().mkdirs()
         shell.execute("cp -r $deviceDataRoot/data/$packageName/. $primaryDest/", asRoot = true)
 
-        // /data/<pkg>/ → <workspace>/<pkg>/internal/data/<pkg>/
         val secondaryDest = appDest.resolve("internal").resolve("data").resolve(packageName)
         secondaryDest.toFile().mkdirs()
         shell.execute("cp -r $deviceDataRoot/$packageName/. $secondaryDest/", asRoot = true)
@@ -137,7 +193,7 @@ class GameLauncherService(
 
     /**
      * Copies workspace internal data back to `/data/data/<pkg>/` and `/data/<pkg>/`
-     * using a root shell command.
+     * using a root shell command.  Reverses [exportInternalWithRoot].
      */
     internal fun importInternalWithRoot(packageName: String, deviceDataRoot: String, workspace: Path) {
         val appSrc = workspaceService.appWorkspace(workspace, packageName)

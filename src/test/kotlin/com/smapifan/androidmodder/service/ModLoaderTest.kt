@@ -1,9 +1,12 @@
 package com.smapifan.androidmodder.service
 
+import com.smapifan.androidmodder.model.SaveDataAction
+import com.smapifan.androidmodder.model.TriggerMode
 import java.nio.file.Files
 import kotlin.io.path.createDirectories
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ModLoaderTest {
@@ -111,5 +114,111 @@ class ModLoaderTest {
         assertEquals(setOf("a", "b"), results.keys)
         assertEquals(11L, results["a"])
         assertEquals(22L, results["b"])
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  New ModDefinition fields: triggerMode, saveDataAction, overlayActions
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `load parses triggerMode ON_DEMAND`() {
+        val modFile = Files.createTempFile("TriggerMod", ".mod")
+        Files.writeString(modFile, """
+            {
+              "name": "DemandMod",
+              "gameId": "com.example.game",
+              "triggerMode": "ON_DEMAND",
+              "patches": []
+            }
+        """.trimIndent())
+
+        val mod = loader.load(modFile)
+        assertEquals(TriggerMode.ON_DEMAND, mod.triggerMode)
+    }
+
+    @Test
+    fun `load parses triggerMode ON_AUTOSAVE`() {
+        val modFile = Files.createTempFile("AutosaveMod", ".mod")
+        Files.writeString(modFile, """
+            {"name":"AutoMod","gameId":"com.example.game","triggerMode":"ON_AUTOSAVE","patches":[]}
+        """.trimIndent())
+
+        assertEquals(TriggerMode.ON_AUTOSAVE, loader.load(modFile).triggerMode)
+    }
+
+    @Test
+    fun `load defaults triggerMode to ON_LAUNCH when absent`() {
+        val modFile = Files.createTempFile("DefaultTrigger", ".mod")
+        Files.writeString(modFile, """{"name":"LegacyMod","gameId":"com.example.game","patches":[]}""")
+
+        assertEquals(TriggerMode.ON_LAUNCH, loader.load(modFile).triggerMode)
+    }
+
+    @Test
+    fun `load parses saveDataAction IMPORT`() {
+        val modFile = Files.createTempFile("ImportMod", ".mod")
+        Files.writeString(modFile, """
+            {
+              "name": "ImportMod",
+              "gameId": "com.gram.mergedragons",
+              "saveDataAction": "IMPORT",
+              "patches": []
+            }
+        """.trimIndent())
+
+        assertEquals(SaveDataAction.IMPORT, loader.load(modFile).saveDataAction)
+    }
+
+    @Test
+    fun `load parses saveDataAction EXPORT`() {
+        val modFile = Files.createTempFile("ExportMod", ".mod")
+        Files.writeString(modFile, """
+            {"name":"ExportMod","gameId":"com.example.game","saveDataAction":"EXPORT","patches":[]}
+        """.trimIndent())
+
+        assertEquals(SaveDataAction.EXPORT, loader.load(modFile).saveDataAction)
+    }
+
+    @Test
+    fun `load defaults saveDataAction to null when absent`() {
+        val modFile = Files.createTempFile("NullAction", ".mod")
+        Files.writeString(modFile, """{"name":"NoAction","gameId":"com.example.game","patches":[]}""")
+
+        assertNull(loader.load(modFile).saveDataAction)
+    }
+
+    @Test
+    fun `load parses overlayActions`() {
+        val modFile = Files.createTempFile("OverlayMod", ".mod")
+        Files.writeString(modFile, """
+            {
+              "name": "InfiniteCoins",
+              "gameId": "com.gram.mergedragons",
+              "triggerMode": "ON_DEMAND",
+              "patches": [
+                { "field": "coins", "operation": "ADD", "amount": 10000 },
+                { "field": "gems",  "operation": "SET", "amount": 999   }
+              ],
+              "overlayActions": [
+                { "label": "+10k Coins", "patchFields": ["coins"] },
+                { "label": "Max Gems",   "patchFields": ["gems"]  }
+              ]
+            }
+        """.trimIndent())
+
+        val mod = loader.load(modFile)
+        assertEquals(2, mod.overlayActions.size)
+        assertEquals("+10k Coins",      mod.overlayActions[0].label)
+        assertEquals(listOf("coins"),   mod.overlayActions[0].patchFields)
+        assertEquals("Max Gems",        mod.overlayActions[1].label)
+        assertEquals(listOf("gems"),    mod.overlayActions[1].patchFields)
+    }
+
+    @Test
+    fun `load defaults overlayActions to empty list when absent`() {
+        val modFile = Files.createTempFile("NoOverlay", ".mod")
+        Files.writeString(modFile, """{"name":"NoOverlay","gameId":"com.example.game","patches":[]}""")
+
+        assertTrue(loader.load(modFile).overlayActions.isEmpty())
     }
 }
