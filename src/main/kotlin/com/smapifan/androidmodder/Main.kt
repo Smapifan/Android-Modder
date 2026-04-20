@@ -43,7 +43,8 @@ fun main(args: Array<String>) {
     println("${i18n.get("app.mods.detected")}: ${service.listMods(workspace).size}")
     println()
     println(i18n.get("cheat.how.it.works"))
-    println(i18n.get("export.how.it.works"))
+    println(i18n.get("export.internal.note"))
+    println(i18n.get("export.external.note"))
     println()
     println(i18n.format("app.catalog.title", allApps.size, ageFilteredApps.size, userAge))
     ageFilteredApps.forEach { app ->

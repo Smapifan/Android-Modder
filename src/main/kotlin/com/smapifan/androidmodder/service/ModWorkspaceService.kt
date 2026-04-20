@@ -25,61 +25,98 @@ class ModWorkspaceService {
     }
 
     /**
-     * Exports all app data from the standard Android data directories into the workspace.
+     * Exports all app data from the standard Android **internal** data directories into the workspace.
      *
-     * Android stores app data in two locations:
-     * - `<deviceDataRoot>/data/<appName>/`  (primary internal storage)
-     * - `<deviceDataRoot>/<appName>/`       (secondary / legacy location)
+     * ⚠️ **Root required** – `/data/data/` and `/data/` are protected by Android's sandbox.
+     * This method only works on a rooted device.
      *
-     * Both directory trees are copied into `<workspace>/<appName>/` preserving
-     * the relative path structure so that [importAppData] can restore them exactly.
+     * Copies:
+     * - `<deviceDataRoot>/data/<appName>/`  → `<workspace>/<appName>/internal/data/data/<appName>/`
+     * - `<deviceDataRoot>/<appName>/`       → `<workspace>/<appName>/internal/data/<appName>/`
      *
-     * @param root         the workspace root directory
+     * @param root           the workspace root directory
      * @param deviceDataRoot the device's `/data` directory (e.g. `Path.of("/data")`)
-     * @param appName      the app / package name (e.g. `"com.gram.mergedragons"`)
+     * @param appName        the app / package name (e.g. `"com.gram.mergedragons"`)
      * @return the app workspace directory (`<root>/<appName>/`)
      */
     fun exportAppData(root: Path, deviceDataRoot: Path, appName: String): Path {
         val dest = appWorkspace(root, appName)
 
-        // /data/data/<appName>/ → <workspace>/<appName>/data/data/<appName>/
+        // /data/data/<appName>/ → <workspace>/<appName>/internal/data/data/<appName>/
         val primarySource = deviceDataRoot.resolve("data").resolve(appName)
         if (Files.isDirectory(primarySource)) {
-            copyTree(primarySource, dest.resolve("data").resolve("data").resolve(appName))
+            copyTree(primarySource, dest.resolve("internal").resolve("data").resolve("data").resolve(appName))
         }
 
-        // /data/<appName>/ → <workspace>/<appName>/data/<appName>/
+        // /data/<appName>/ → <workspace>/<appName>/internal/data/<appName>/
         val secondarySource = deviceDataRoot.resolve(appName)
         if (Files.isDirectory(secondarySource)) {
-            copyTree(secondarySource, dest.resolve("data").resolve(appName))
+            copyTree(secondarySource, dest.resolve("internal").resolve("data").resolve(appName))
         }
 
         return dest
     }
 
     /**
-     * Imports previously exported app data back to the device data directories.
+     * Exports app data from the Android **external** storage into the workspace.
      *
-     * Reverses [exportAppData]: copies the workspace trees back to
-     * `<deviceDataRoot>/data/<appName>/` and `<deviceDataRoot>/<appName>/`.
+     * ✅ **No root required** – `/sdcard/Android/data/<appName>/` is accessible to all apps.
      *
-     * @param root         the workspace root directory
+     * Copies:
+     * - `<externalStorageRoot>/Android/data/<appName>/` → `<workspace>/<appName>/external/<appName>/`
+     *
+     * @param root                the workspace root directory
+     * @param externalStorageRoot the device's external storage root (e.g. `Path.of("/sdcard")`)
+     * @param appName             the app / package name (e.g. `"com.gram.mergedragons"`)
+     * @return the app workspace directory (`<root>/<appName>/`)
+     */
+    fun exportExternalData(root: Path, externalStorageRoot: Path, appName: String): Path {
+        val dest   = appWorkspace(root, appName)
+        val source = externalStorageRoot.resolve("Android").resolve("data").resolve(appName)
+        if (Files.isDirectory(source)) {
+            copyTree(source, dest.resolve("external").resolve(appName))
+        }
+        return dest
+    }
+
+    /**
+     * Imports previously exported **internal** app data back to the device data directories.
+     *
+     * ⚠️ **Root required** – reverses [exportAppData].
+     *
+     * @param root           the workspace root directory
      * @param deviceDataRoot the device's `/data` directory (e.g. `Path.of("/data")`)
-     * @param appName      the app / package name
+     * @param appName        the app / package name
      */
     fun importAppData(root: Path, deviceDataRoot: Path, appName: String) {
         val src = appWorkspace(root, appName)
 
-        // <workspace>/<appName>/data/data/<appName>/ → /data/data/<appName>/
-        val primaryWorkspace = src.resolve("data").resolve("data").resolve(appName)
+        // <workspace>/<appName>/internal/data/data/<appName>/ → /data/data/<appName>/
+        val primaryWorkspace = src.resolve("internal").resolve("data").resolve("data").resolve(appName)
         if (Files.isDirectory(primaryWorkspace)) {
             copyTree(primaryWorkspace, deviceDataRoot.resolve("data").resolve(appName))
         }
 
-        // <workspace>/<appName>/data/<appName>/ → /data/<appName>/
-        val secondaryWorkspace = src.resolve("data").resolve(appName)
+        // <workspace>/<appName>/internal/data/<appName>/ → /data/<appName>/
+        val secondaryWorkspace = src.resolve("internal").resolve("data").resolve(appName)
         if (Files.isDirectory(secondaryWorkspace)) {
             copyTree(secondaryWorkspace, deviceDataRoot.resolve(appName))
+        }
+    }
+
+    /**
+     * Imports previously exported **external** app data back to the device external storage.
+     *
+     * ✅ **No root required** – reverses [exportExternalData].
+     *
+     * @param root                the workspace root directory
+     * @param externalStorageRoot the device's external storage root (e.g. `Path.of("/sdcard")`)
+     * @param appName             the app / package name
+     */
+    fun importExternalData(root: Path, externalStorageRoot: Path, appName: String) {
+        val workspace = appWorkspace(root, appName).resolve("external").resolve(appName)
+        if (Files.isDirectory(workspace)) {
+            copyTree(workspace, externalStorageRoot.resolve("Android").resolve("data").resolve(appName))
         }
     }
 

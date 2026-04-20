@@ -4,17 +4,39 @@ Rechtssichere MVP-Grundlage für einen Android-Modding-Workflow. Die App ist die
 
 ## Konzept: file-basiert, keine Mod-API nötig
 
-Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu verändern**. Alles läuft über die Save-Dateien im Workspace:
+Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu verändern**. Alles läuft über die App-Daten im Workspace:
 
-1. **Export** – kopiert `data/data/<appName>/` und `data/<appName>/` vom Gerät in den Workspace
+1. **Export** – kopiert App-Daten vom Gerät in den Workspace
 2. **Cheat/Mod anwenden** – ändert Felder in den Save-Dateien (z. B. `coins=500` → `coins=1500`)
 3. **Import** – kopiert die bearbeiteten Daten zurück
 
+## Speicherzugriff: Root vs. External Storage
+
+| Pfad auf dem Gerät | Root nötig? | Methode |
+|---|---|---|
+| `/data/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
+| `/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
+| `/sdcard/Android/data/<pkg>/` | ❌ **Nein** | `exportExternalData()` / `importExternalData()` |
+
+Viele Spiele speichern (zumindest Teile) ihrer Daten im External Storage – der ist ohne Root erreichbar. Für den vollen Zugriff auf `/data/data/` ist ein gerootetes Gerät nötig.
+
 ```
-Gerät                         Workspace
-─────────────────────         ─────────────────────────────────────
-/data/data/<app>/   ──────►  <workspace>/<app>/data/data/<app>/
-/data/<app>/        ──────►  <workspace>/<app>/data/<app>/
+Gerät (intern, Root)                    Workspace
+────────────────────────────            ────────────────────────────────────────────
+/data/data/<pkg>/          ──────►     <workspace>/<app>/internal/data/data/<pkg>/
+/data/<pkg>/               ──────►     <workspace>/<app>/internal/data/<pkg>/
+
+Gerät (extern, kein Root)
+────────────────────────────
+/sdcard/Android/data/<pkg>/ ─────►     <workspace>/<app>/external/<pkg>/
+```
+
+```kotlin
+// Internes Export (Root erforderlich)
+service.exportAppData(workspace, Path.of("/data"), "com.gram.mergedragons")
+
+// Externes Export (kein Root nötig)
+service.exportExternalData(workspace, Path.of("/sdcard"), "com.gram.mergedragons")
 ```
 
 ## Cheats

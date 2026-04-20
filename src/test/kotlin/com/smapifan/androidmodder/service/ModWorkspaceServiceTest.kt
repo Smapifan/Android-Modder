@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class ModWorkspaceServiceTest {
     private val service = ModWorkspaceService()
 
-    // --- exportAppData / importAppData ------------------------------------
+    // --- exportAppData / importAppData (internal, root required) ---------
 
     @Test
     fun `exportAppData copies primary data-data directory into workspace`() {
@@ -28,7 +28,7 @@ class ModWorkspaceServiceTest {
 
         val exported = workspace
             .resolve("com.example.game")
-            .resolve("data").resolve("data").resolve("com.example.game")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.example.game")
             .resolve("files").resolve("savegame.dat")
         assertTrue(exported.exists(), "Primary data dir should be exported")
         assertEquals("coins=500", exported.readText())
@@ -46,7 +46,7 @@ class ModWorkspaceServiceTest {
 
         val exported = workspace
             .resolve("com.example.game")
-            .resolve("data").resolve("com.example.game")
+            .resolve("internal").resolve("data").resolve("com.example.game")
             .resolve("prefs.dat")
         assertTrue(exported.exists(), "Secondary data dir should be exported")
         assertEquals("level=5", exported.readText())
@@ -57,7 +57,6 @@ class ModWorkspaceServiceTest {
         val deviceData = Files.createTempDirectory("device-empty")
         val workspace  = Files.createTempDirectory("workspace-empty")
 
-        // Neither /data/data/<app> nor /data/<app> exists – should not throw
         service.exportAppData(workspace, deviceData, "com.example.game")
 
         val appDir = workspace.resolve("com.example.game")
@@ -69,10 +68,9 @@ class ModWorkspaceServiceTest {
         val workspace  = Files.createTempDirectory("ws-import")
         val deviceData = Files.createTempDirectory("device-import")
 
-        // Simulate an already-exported workspace
         val primaryWs = workspace
             .resolve("com.example.game")
-            .resolve("data").resolve("data").resolve("com.example.game")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.example.game")
             .resolve("files")
         primaryWs.createDirectories()
         Files.writeString(primaryWs.resolve("savegame.dat"), "coins=1500")
@@ -92,7 +90,6 @@ class ModWorkspaceServiceTest {
         val workspace   = Files.createTempDirectory("ws-roundtrip")
         val restoreData = Files.createTempDirectory("device-restore")
 
-        // Set up device data
         val saveDir = deviceData.resolve("data").resolve("com.game.test")
         saveDir.createDirectories()
         Files.writeString(saveDir.resolve("save.dat"), "gems=42\ncoins=100")
@@ -102,6 +99,63 @@ class ModWorkspaceServiceTest {
 
         val restored = restoreData.resolve("data").resolve("com.game.test").resolve("save.dat")
         assertEquals("gems=42\ncoins=100", restored.readText())
+    }
+
+    // --- exportExternalData / importExternalData (no root required) -------
+
+    @Test
+    fun `exportExternalData copies sdcard Android data into workspace`() {
+        val sdcard = Files.createTempDirectory("sdcard")
+        val extDir = sdcard.resolve("Android").resolve("data").resolve("com.example.game")
+        extDir.createDirectories()
+        Files.writeString(extDir.resolve("world.dat"), "map=level1")
+
+        val workspace = Files.createTempDirectory("ws-ext-export")
+        service.exportExternalData(workspace, sdcard, "com.example.game")
+
+        val exported = workspace
+            .resolve("com.example.game")
+            .resolve("external").resolve("com.example.game")
+            .resolve("world.dat")
+        assertTrue(exported.exists(), "External data should be exported")
+        assertEquals("map=level1", exported.readText())
+    }
+
+    @Test
+    fun `importExternalData restores sdcard data from workspace`() {
+        val workspace = Files.createTempDirectory("ws-ext-import")
+        val sdcard    = Files.createTempDirectory("sdcard-restore")
+
+        val extWs = workspace
+            .resolve("com.example.game")
+            .resolve("external").resolve("com.example.game")
+        extWs.createDirectories()
+        Files.writeString(extWs.resolve("world.dat"), "map=modded")
+
+        service.importExternalData(workspace, sdcard, "com.example.game")
+
+        val restored = sdcard.resolve("Android").resolve("data")
+            .resolve("com.example.game").resolve("world.dat")
+        assertTrue(restored.exists(), "External data should be restored")
+        assertEquals("map=modded", restored.readText())
+    }
+
+    @Test
+    fun `exportExternalData and importExternalData round-trip preserves content`() {
+        val sdcard      = Files.createTempDirectory("sdcard-rt")
+        val workspace   = Files.createTempDirectory("ws-ext-rt")
+        val sdcardRestore = Files.createTempDirectory("sdcard-rt-restore")
+
+        val extDir = sdcard.resolve("Android").resolve("data").resolve("com.game.rt")
+        extDir.createDirectories()
+        Files.writeString(extDir.resolve("config.dat"), "volume=80\nfps=60")
+
+        service.exportExternalData(workspace, sdcard, "com.game.rt")
+        service.importExternalData(workspace, sdcardRestore, "com.game.rt")
+
+        val restored = sdcardRestore.resolve("Android").resolve("data")
+            .resolve("com.game.rt").resolve("config.dat")
+        assertEquals("volume=80\nfps=60", restored.readText())
     }
 
     // --- listExtensions ---------------------------------------------------

@@ -22,6 +22,10 @@ class CheatApplierTest {
         return dir
     }
 
+    // Internal-storage path helper (mirrors exportAppData workspace structure)
+    private fun internalSave(name: String, content: String) =
+        "internal/data/data/TestGame/files/$name" to content
+
     private fun cheat(field: String, op: CheatOperation, amount: Long) =
         CheatDefinition(appName = "TestGame", field = field, operation = op, amount = amount)
 
@@ -107,8 +111,8 @@ class CheatApplierTest {
     }
 
     @Test
-    fun `throws when field is not found anywhere in workspace`() {
-        val dir = makeWorkspace("data/data/TestGame/save.dat" to "lives=3")
+    fun `throws when no save files exist in workspace at all`() {
+        val dir = Files.createTempDirectory("cheat-empty-ws")
         assertFailsWith<IllegalStateException> {
             applier.apply(dir, cheat("coins", CheatOperation.ADD, 100))
         }

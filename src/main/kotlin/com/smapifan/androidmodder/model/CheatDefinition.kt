@@ -12,16 +12,14 @@ import kotlinx.serialization.Serializable
  * The real game binary is **never** modified.
  *
  * Example cheats:
- * - ADD 1000 to "coins"   → adds 1 000 coins
+ * - ADD 1000 to "coins"        → adds 1 000 coins
  * - SUBTRACT 1000 from "coins" → removes 1 000 coins (minimum 0)
- * - SET 9999 to "lives"   → sets lives to exactly 9 999
+ * - SET 9999 to "lives"        → sets lives to exactly 9 999
  */
 @Serializable
 data class CheatDefinition(
     /** Game / app identifier, e.g. "MergeDragons". */
     val appName: String,
-    /** Path to the save file relative to the game's data directory, e.g. "files/savegame.dat". */
-    val saveFileRelativePath: String,
     /** The field name inside the save file to modify, e.g. "coins" or "gems". */
     val field: String,
     /** Whether to add, subtract, or set the value. */

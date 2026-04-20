@@ -40,20 +40,23 @@ class CheatApplier {
 
     /**
      * Applies [cheat] to the first file inside [appWorkspaceDir] that contains
-     * the named field, and returns the new field value after the operation.
+     * the named field. If the field is not yet present in any file, it is added
+     * to the first available save file starting from 0.
      *
      * @throws IllegalArgumentException if [appWorkspaceDir] is not a directory.
-     * @throws IllegalStateException    if the field is not found in any file.
+     * @throws IllegalStateException    if no save files exist in the workspace at all.
      */
     fun apply(appWorkspaceDir: Path, cheat: CheatDefinition): Long {
         require(Files.isDirectory(appWorkspaceDir)) {
             "App workspace directory does not exist: $appWorkspaceDir"
         }
 
+        // Prefer a file that already contains the field; fall back to any file.
         val saveFile = findFileWithField(appWorkspaceDir, cheat.field)
+            ?: findAnyFile(appWorkspaceDir)
             ?: throw IllegalStateException(
-                "Field '${cheat.field}' not found in workspace for '${cheat.appName}'. " +
-                "Export the app data first with exportAppData()."
+                "No save files found in workspace for '${cheat.appName}'. " +
+                "Export the app data first with exportAppData() or exportExternalData()."
             )
 
         val fields = readFields(saveFile)
@@ -96,11 +99,23 @@ class CheatApplier {
     internal fun findFileWithField(dir: Path, field: String): Path? {
         Files.walk(dir).use { stream ->
             return stream
+                .toList()
                 .filter { it.isRegularFile() }
-                .sorted()
+                .sortedBy { it.toString() }
                 .firstOrNull { path ->
                     runCatching { readFields(path).containsKey(field) }.getOrDefault(false)
                 }
+        }
+    }
+
+    /** Returns the first regular file found anywhere under [dir], or null if none exists. */
+    internal fun findAnyFile(dir: Path): Path? {
+        Files.walk(dir).use { stream ->
+            return stream
+                .toList()
+                .filter { it.isRegularFile() }
+                .sortedBy { it.toString() }
+                .firstOrNull()
         }
     }
 }
