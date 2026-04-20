@@ -12,22 +12,45 @@ Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu v
 
 ## Launcher-Zyklus
 
-Android-Modder ist der Launcher. Der Nutzer startet das Spiel nicht direkt, sondern über diese App:
+Android-Modder ist der Launcher. Der Nutzer startet das Spiel nicht direkt, sondern über diese App. **Cheats und Mods werden automatisch angewendet** – kein manuelles Verdrahten nötig:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  1. PRE-LAUNCH                                          │
-│     exportAppData()  → /data/data/<pkg>/  (Root)        │
-│     exportExternalData() → /sdcard/Android/data/<pkg>/  │
-│     Cheats / Mods auf exportierte Save-Daten anwenden   │
-├─────────────────────────────────────────────────────────┤
-│  2. GAME LAUNCH                                         │
-│     am start -n <pkg>/<Activity>                        │
-│     Spiel läuft normal in seiner Sandbox                │
-├─────────────────────────────────────────────────────────┤
-│  3. POST-EXIT                                           │
-│     importAppData()  → zurück auf das Gerät             │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  1. PRE-LAUNCH                                              │
+│     exportAppData()  → /data/data/<pkg>/  (Root)            │
+│     exportExternalData() → /sdcard/Android/data/<pkg>/      │
+│     ✦ Alle Cheats aus Cheats.json (passend zu pkg) anwenden │
+│     ✦ Alle *.mod-Dateien im Workspace (passend zu pkg) anw. │
+├─────────────────────────────────────────────────────────────┤
+│  2. GAME LAUNCH                                             │
+│     am start -n <pkg>/<Activity>                            │
+│     Spiel läuft normal in seiner Sandbox, unverändert       │
+│     Spiel liest die (jetzt geänderten) Save-Dateien         │
+├─────────────────────────────────────────────────────────────┤
+│  3. POST-EXIT                                               │
+│     importAppData()  → zurück auf das Gerät                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+```kotlin
+// Cheats aus Cheats.json laden
+val cheats = CheatsConfigParser().parse(File("Cheats.json").readText())
+
+// Launcher erstellen – Cheats automatisch injiziert
+val launcher = GameLauncherService(cheats = cheats)
+
+// Spiel starten: Export → Cheats+Mods auto → am start → Import
+launcher.launch(
+    workspace = Path.of("/sdcard/AndroidModder/workspace"),
+    config    = GameLaunchConfig(
+        packageName   = "com.gram.mergedragons",
+        launchCommand = "am start -n com.gram.mergedragons/.MainActivity",
+        useRootForData = true
+    )
+)
+// → CoinCount wird automatisch um 1000 erhöht (aus Cheats.json)
+// → *.mod-Dateien im Workspace werden automatisch angewendet
+// → Spiel startet und liest die geänderten Saves
 ```
 
 ## Speicherzugriff: Root vs. External Storage

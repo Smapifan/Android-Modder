@@ -1,5 +1,6 @@
 package com.smapifan.androidmodder.service
 
+import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.GameLaunchConfig
 import java.nio.file.Path
 
@@ -13,51 +14,55 @@ import java.nio.file.Path
  *
  * ```
  * ┌──────────────────────────────────────────────────────────┐
- * │  1. PRE-LAUNCH HOOK                                      │
- * │     • exportAppData()  – copies /data/data/<pkg>/        │
- * │       into workspace   (ROOT required)                   │
- * │     • exportExternalData() – copies /sdcard/Android/     │
- * │       data/<pkg>/ into workspace (no root)               │
- * │     • user-supplied preHooks run (apply cheats / mods)   │
+ * │  1. PRE-LAUNCH                                           │
+ * │     • exportAppData()      (ROOT – /data/data/<pkg>/)    │
+ * │     • exportExternalData() (no root – /sdcard/…)         │
+ * │     • ALL matching cheats from [cheats] applied          │
+ * │     • ALL matching *.mod files from workspace applied    │
+ * │     • optional extra preHooks run                        │
  * ├──────────────────────────────────────────────────────────┤
  * │  2. GAME LAUNCH                                          │
  * │     • `am start -n <package>/<activity>` via shell       │
  * │     • game runs in its normal sandbox, unmodified        │
  * │     • game reads the (now-modified) save files           │
  * ├──────────────────────────────────────────────────────────┤
- * │  3. POST-EXIT HOOK  (importAfterExit = true)             │
+ * │  3. POST-EXIT  (importAfterExit = true)                  │
+ * │     • optional postHooks run                             │
  * │     • importAppData()       (ROOT required)              │
  * │     • importExternalData()  (no root)                    │
- * │     • user-supplied postHooks run                        │
  * └──────────────────────────────────────────────────────────┘
  * ```
  *
- * The game binary is **never patched**. All modifications are applied to
- * the save files in the workspace. Root access is used only to copy files
- * in and out of the internal data directory – the game itself runs normally.
+ * Cheats and mods are applied **automatically** – no manual wiring required.
+ * The game binary is **never patched**.
  *
- * ## Root access
- *
- * `/data/data/<pkg>/` is protected by Android's app sandbox. Access requires:
- * - The device is rooted (Magisk / SuperSU)
- * - The user has granted root to Android-Modder
- *
- * External storage (`/sdcard/Android/data/<pkg>/`) is accessible without root.
- * Set [GameLaunchConfig.useRootForData] = `false` if only external data is needed.
+ * @param cheats         all known cheat definitions (e.g. loaded from Cheats.json);
+ *                       only cheats whose [CheatDefinition.appName] matches the
+ *                       launched game's package name are applied
+ * @param workspaceService manages workspace directories and file copies
+ * @param cheatApplier   applies individual cheat operations to save files
+ * @param modLoader      discovers and applies *.mod files
+ * @param shell          executes shell commands (and root commands via `su`)
  */
 class GameLauncherService(
+    private val cheats: List<CheatDefinition> = emptyList(),
     private val workspaceService: ModWorkspaceService = ModWorkspaceService(),
+    private val cheatApplier: CheatApplier = CheatApplier(),
+    private val modLoader: ModLoader = ModLoader(),
     private val shell: ShellExecutor = ShellExecutor()
 ) {
 
     /**
      * Runs the full launch cycle for [config].
      *
+     * Cheats and mods are applied automatically before the game starts:
+     * - All entries in [cheats] whose `appName` equals [GameLaunchConfig.packageName]
+     * - All `*.mod` files in [workspace] whose `gameId` equals [GameLaunchConfig.packageName]
+     *
      * @param workspace  the workspace root directory
      * @param config     launch configuration (package, command, root flag, …)
-     * @param preHooks   callbacks invoked **after** export but **before** game launch
-     *                   (use these to apply cheats / mods to the exported data)
-     * @param postHooks  callbacks invoked **after** the game exits (optional cleanup)
+     * @param preHooks   optional extra callbacks invoked after auto-cheats/mods but before launch
+     * @param postHooks  optional callbacks invoked after the game exits (before import)
      * @return the [ShellResult] of the `am start` command
      */
     fun launch(
@@ -66,8 +71,8 @@ class GameLauncherService(
         preHooks: List<() -> Unit> = emptyList(),
         postHooks: List<() -> Unit> = emptyList()
     ): ShellResult {
-        val deviceData = java.nio.file.Path.of(config.deviceDataRoot)
-        val sdcard     = java.nio.file.Path.of(config.externalStorageRoot)
+        val sdcard = java.nio.file.Path.of(config.externalStorageRoot)
+        val appDir = workspaceService.appWorkspace(workspace, config.packageName)
 
         // ── 1. PRE-LAUNCH: export ─────────────────────────────────────────
         if (config.useRootForData) {
@@ -75,7 +80,23 @@ class GameLauncherService(
         }
         workspaceService.exportExternalData(workspace, sdcard, config.packageName)
 
-        // Run pre-launch hooks (apply cheats, mods, …)
+        // ── 1b. AUTO-APPLY CHEATS ─────────────────────────────────────────
+        val matchingCheats = cheats.filter { it.appName == config.packageName }
+        matchingCheats.forEach { cheat ->
+            runCatching { cheatApplier.apply(appDir, cheat) }
+        }
+
+        // ── 1c. AUTO-APPLY MODS from workspace ────────────────────────────
+        workspaceService.listMods(workspace).forEach { modPath ->
+            runCatching {
+                val mod = modLoader.load(modPath)
+                if (mod.gameId == config.packageName) {
+                    modLoader.applyMod(mod, appDir)
+                }
+            }
+        }
+
+        // ── 1d. OPTIONAL EXTRA PRE-HOOKS ──────────────────────────────────
         preHooks.forEach { it() }
 
         // ── 2. LAUNCH GAME ────────────────────────────────────────────────
