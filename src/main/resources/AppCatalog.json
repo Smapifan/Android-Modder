@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Merge Dragons!",
+    "packageName": "com.gram.mergedragons",
+    "category": "Spiele",
+    "minAgeRating": 0
+  },
+  {
+    "name": "YouTube Kids",
+    "packageName": "com.google.android.apps.youtube.kids",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Google Maps",
+    "packageName": "com.google.android.apps.maps",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Google Chrome",
+    "packageName": "com.android.chrome",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Google Drive",
+    "packageName": "com.google.android.apps.docs",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Gmail",
+    "packageName": "com.google.android.gm",
+    "category": "GApps",
+    "minAgeRating": 6
+  },
+  {
+    "name": "YouTube",
+    "packageName": "com.google.android.youtube",
+    "category": "GApps",
+    "minAgeRating": 12
+  },
+  {
+    "name": "Google Fotos",
+    "packageName": "com.google.android.apps.photos",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Google Kalender",
+    "packageName": "com.google.android.calendar",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Clash of Clans",
+    "packageName": "com.supercell.clashofclans",
+    "category": "Spiele",
+    "minAgeRating": 12
+  },
+  {
+    "name": "Minecraft",
+    "packageName": "com.mojang.minecraftpe",
+    "category": "Spiele",
+    "minAgeRating": 6
+  },
+  {
+    "name": "Subway Surfers",
+    "packageName": "com.kiloo.subwaysurf",
+    "category": "Spiele",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Duolingo",
+    "packageName": "com.duolingo",
+    "category": "Bildung",
+    "minAgeRating": 0
+  },
+  {
+    "name": "Khan Academy Kids",
+    "packageName": "org.khanacademy.kids",
+    "category": "Bildung",
+    "minAgeRating": 0
+  }
+]

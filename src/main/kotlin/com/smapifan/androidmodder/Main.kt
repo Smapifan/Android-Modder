@@ -1,5 +1,6 @@
 package com.smapifan.androidmodder
 
+import com.smapifan.androidmodder.service.AppCatalogService
 import com.smapifan.androidmodder.service.CheatsConfigParser
 import com.smapifan.androidmodder.service.ModWorkspaceService
 import java.nio.file.Path
@@ -20,9 +21,27 @@ fun main(args: Array<String>) {
         emptyList()
     }
 
+    val catalogPath = Path.of("src/main/resources/AppCatalog.json")
+    val catalogService = AppCatalogService()
+    val allApps = if (catalogPath.exists()) {
+        catalogService.parse(catalogPath.readText())
+    } else {
+        emptyList()
+    }
+
+    // Example: show apps suitable for a 10-year-old (Family Link controls the actual install)
+    val userAge = 10
+    val ageFilteredApps = catalogService.filterByAge(allApps, userAge)
+
     println("Android-Modder starter")
     println("Workspace: $workspace")
     println("Loaded cheat definitions: ${cheats.size}")
     println("Detected extensions: ${service.listExtensions(workspace).size}")
-    println("Note: This project intentionally supports file-based workflows only.")
+    println()
+    println("App catalog (${allApps.size} total, ${ageFilteredApps.size} suitable for users aged $userAge):")
+    ageFilteredApps.forEach { app ->
+        println("  [${app.category}] ${app.name}  ->  ${catalogService.playStoreUrl(app)}")
+    }
+    println()
+    println("Note: Installation opens the official Play Store. Family Link approval remains active.")
 }
