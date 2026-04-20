@@ -1,0 +1,13 @@
+[
+  {
+    "appName": "MergeDragons",
+    "saveFileRelativePath": "files/savegame.dat",
+    "saveAddress": "0x0010FFAA",
+    "memoryAddress": "0x1000ABCD"
+  },
+  {
+    "appName": "StardewValley",
+    "saveFileRelativePath": "files/Farmer123456",
+    "saveAddress": "0x00AA20BC"
+  }
+]
