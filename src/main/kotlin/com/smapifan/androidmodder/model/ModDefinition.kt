@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * A single patch entry inside a [ModDefinition].
+ * @see SaveDataAction for the save-data export/import counterpart.
  * Mirrors the structure of [CheatDefinition] so that mods can be applied
  * with the same [com.smapifan.androidmodder.service.CheatApplier] logic –
  * no external mod API required.
