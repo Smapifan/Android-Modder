@@ -1,5 +1,6 @@
 package com.smapifan.androidmodder.service
 
+import com.smapifan.androidmodder.model.ApkInjectionConfig
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.DataAccessStrategy
 import com.smapifan.androidmodder.model.GameLaunchConfig
@@ -56,15 +57,31 @@ import java.nio.file.Path
  * The game is **always** started with `am start` – it runs in its own
  * normal sandbox and is **never** patched at the binary level.
  *
- * @param cheats           all known cheat definitions (filtered to matching package)
- * @param workspaceService manages workspace directories and file copies
- * @param cheatApplier     applies individual cheat operations to save files
- * @param modLoader        discovers and applies `*.mod` files
- * @param shell            executes shell commands
- * @param overlayService   optional overlay coordinator; enables process monitoring
- *                         and deferred ON_DEMAND/ON_AUTOSAVE mods
- * @param processMemory    optional live-memory injection service; used when
- *                         [DataAccessStrategy.PROCESS_MEMORY] is selected
+ * ## APK-injection code path (optional)
+ *
+ * When [activationService] is provided, the launcher also writes a
+ * per-launch activation token + `mod_launcher.sh` to external storage
+ * immediately before `am start`.  The injected smali bootstrap inside
+ * the patched APK executes the script at `Application.onCreate()`,
+ * applying patches directly to `/data/data/<pkg>/` files (it has access
+ * because it runs as the game's own UID – no root required).
+ *
+ * The [restoreOriginalApk] method uses [apkInjection] to: back up saves
+ * via `run-as`, write a restore script, uninstall the patched APK, and
+ * reinstall the original Play-Store APK – **all without any save-data loss**.
+ *
+ * @param cheats            all known cheat definitions (filtered to matching package)
+ * @param workspaceService  manages workspace directories and file copies
+ * @param cheatApplier      applies individual cheat operations to save files
+ * @param modLoader         discovers and applies `*.mod` files
+ * @param shell             executes shell commands
+ * @param overlayService    optional overlay coordinator; enables process monitoring
+ *                          and deferred ON_DEMAND/ON_AUTOSAVE mods
+ * @param processMemory     optional live-memory injection service; used when
+ *                          [DataAccessStrategy.PROCESS_MEMORY] is selected
+ * @param activationService optional: writes per-launch token + `mod_launcher.sh`
+ *                          for the APK-injection code path
+ * @param apkInjection      optional: manages APK patch pipeline and original-restore
  */
 class GameLauncherService(
     private val cheats: List<CheatDefinition> = emptyList(),
@@ -73,13 +90,22 @@ class GameLauncherService(
     private val modLoader: ModLoader = ModLoader(),
     private val shell: ShellExecutor = ShellExecutor(),
     private val overlayService: ModOverlayService? = null,
-    private val processMemory: ProcessMemoryService? = null
+    private val processMemory: ProcessMemoryService? = null,
+    private val activationService: LaunchActivationService? = null,
+    private val apkInjection: ApkInjectionService? = null
 ) {
 
     /**
      * Runs the full launch cycle for [config].
      *
      * See the class-level diagram for the precise step order.
+     *
+     * When [activationService] is configured an activation token +
+     * `mod_launcher.sh` are written to external storage before `am start`.
+     * The injected smali bootstrap inside the patched APK executes the script
+     * at `Application.onCreate()`, applying ON_LAUNCH mod patches directly to
+     * `/data/data/<pkg>/` – no root needed.  After game exit the token is
+     * cleared (safety cleanup).
      *
      * @param workspace  workspace root directory
      * @param config     launch parameters (package name, shell command, strategy, …)
@@ -129,6 +155,21 @@ class GameLauncherService(
         // ── 1d. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
         preHooks.forEach { it() }
 
+        // ── 1e. WRITE APK-INJECTION ACTIVATION TOKEN ─────────────────────────
+        // When an activationService is provided the injected smali bootstrap
+        // inside the patched APK will execute mod_launcher.sh at startup,
+        // applying ON_LAUNCH patches directly to /data/data/<pkg>/ (accessible
+        // because the script runs as the game's own UID – no root needed).
+        if (activationService != null) {
+            val onLaunchMods = allActiveMods.filter { it.triggerMode == TriggerMode.ON_LAUNCH }
+            if (onLaunchMods.isNotEmpty()) {
+                val instructions = activationService.instructionsFromMods(
+                    config.packageName, onLaunchMods, config.deviceDataRoot
+                )
+                activationService.writeToken(config.packageName, instructions, config.deviceDataRoot)
+            }
+        }
+
         // ── 2. LAUNCH GAME ───────────────────────────────────────────────────
         val launchResult = shell.execute(config.launchCommand)
 
@@ -142,6 +183,11 @@ class GameLauncherService(
                 sdcard        = sdcard
             )
         }
+
+        // ── 2c. SAFETY: clear any unconsumed activation token ─────────────────
+        // The injected script deletes the token itself; this is a fallback in
+        // case the game crashed before Application.onCreate() completed.
+        activationService?.clearToken(config.packageName)
 
         // ── 3. POST-EXIT: import data back to device ─────────────────────────
         if (config.importAfterExit) {
@@ -360,4 +406,32 @@ class GameLauncherService(
             shell.execute("cp -r $secondarySrc/. $deviceDataRoot/$packageName/", asRoot = true)
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  APK-injection: restore original Play-Store APK (zero save loss)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Restores the original Play-Store APK for [config] **without losing any
+     * save data** from the current (modded) session.
+     *
+     * Delegates to [ApkInjectionService.restoreOriginalApk], which:
+     * 1. Backs up `/data/data/<pkg>/` to external storage via `run-as` (works
+     *    because the patched APK has `android:debuggable="true"`).
+     * 2. Writes a restore script so the next patched-APK launch auto-restores
+     *    saves at `Application.onCreate()` before the game reads them.
+     * 3. Uninstalls the patched APK (`pm uninstall` – data wiped by Android,
+     *    but saves are already safe in the external backup).
+     * 4. Installs the original, unmodified APK (`pm install`).
+     *
+     * After this call the game is Play-Store-compatible.  The save data from
+     * the modded session is preserved in external storage and restored
+     * automatically on the next launcher-assisted launch.
+     *
+     * @param config injection config (must include path to the original APK)
+     * @return `true` if every step succeeded; `false` if [apkInjection] is
+     *         not configured or a step failed
+     */
+    fun restoreOriginalApk(config: ApkInjectionConfig): Boolean =
+        apkInjection?.restoreOriginalApk(config) ?: false
 }
