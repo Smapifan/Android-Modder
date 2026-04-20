@@ -28,23 +28,23 @@ class ModLoader(private val cheatApplier: CheatApplier = CheatApplier()) {
         json.decodeFromString<ModDefinition>(modPath.readText())
 
     /**
-     * Applies all patches of [mod] to the save file at [saveFilePath].
+     * Applies all patches of [mod] to save files inside [appWorkspaceDir].
      *
-     * Returns a map of field name → new value for every patch that was applied.
-     * Patches that reference a field not yet present in the save file will
-     * start from 0 (ADD/SUBTRACT) or be written directly (SET).
+     * Each patch is treated like a cheat: [CheatApplier] searches the whole
+     * workspace directory tree for the named field and applies the operation.
+     *
+     * Returns a map of field name → new value for every patch applied.
      */
-    fun applyMod(mod: ModDefinition, saveFilePath: Path): Map<String, Long> {
+    fun applyMod(mod: ModDefinition, appWorkspaceDir: Path): Map<String, Long> {
         val results = LinkedHashMap<String, Long>()
         mod.patches.forEach { patch ->
             val syntheticCheat = CheatDefinition(
-                appName              = mod.gameId,
-                saveFileRelativePath = saveFilePath.fileName.toString(),
-                field                = patch.field,
-                operation            = patch.operation,
-                amount               = patch.amount
+                appName   = mod.gameId,
+                field     = patch.field,
+                operation = patch.operation,
+                amount    = patch.amount
             )
-            results[patch.field] = cheatApplier.apply(saveFilePath, syntheticCheat)
+            results[patch.field] = cheatApplier.apply(appWorkspaceDir, syntheticCheat)
         }
         return results
     }

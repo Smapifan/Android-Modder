@@ -24,18 +24,63 @@ class ModWorkspaceService {
         return appDir
     }
 
-    fun exportSave(root: Path, appName: String, sourceSave: Path): Path {
-        val destination = appWorkspace(root, appName).resolve(sourceSave.fileName.toString())
-        Files.copy(sourceSave, destination, StandardCopyOption.REPLACE_EXISTING)
-        return destination
+    /**
+     * Exports all app data from the standard Android data directories into the workspace.
+     *
+     * Android stores app data in two locations:
+     * - `<deviceDataRoot>/data/<appName>/`  (primary internal storage)
+     * - `<deviceDataRoot>/<appName>/`       (secondary / legacy location)
+     *
+     * Both directory trees are copied into `<workspace>/<appName>/` preserving
+     * the relative path structure so that [importAppData] can restore them exactly.
+     *
+     * @param root         the workspace root directory
+     * @param deviceDataRoot the device's `/data` directory (e.g. `Path.of("/data")`)
+     * @param appName      the app / package name (e.g. `"com.gram.mergedragons"`)
+     * @return the app workspace directory (`<root>/<appName>/`)
+     */
+    fun exportAppData(root: Path, deviceDataRoot: Path, appName: String): Path {
+        val dest = appWorkspace(root, appName)
+
+        // /data/data/<appName>/ → <workspace>/<appName>/data/data/<appName>/
+        val primarySource = deviceDataRoot.resolve("data").resolve(appName)
+        if (Files.isDirectory(primarySource)) {
+            copyTree(primarySource, dest.resolve("data").resolve("data").resolve(appName))
+        }
+
+        // /data/<appName>/ → <workspace>/<appName>/data/<appName>/
+        val secondarySource = deviceDataRoot.resolve(appName)
+        if (Files.isDirectory(secondarySource)) {
+            copyTree(secondarySource, dest.resolve("data").resolve(appName))
+        }
+
+        return dest
     }
 
-    fun importSave(root: Path, appName: String, saveName: String, targetSavePath: Path): Path {
-        val source = appWorkspace(root, appName).resolve(saveName)
-        require(source.isRegularFile()) { "Save file not found in workspace: $source" }
-        targetSavePath.parent?.createDirectories()
-        Files.copy(source, targetSavePath, StandardCopyOption.REPLACE_EXISTING)
-        return targetSavePath
+    /**
+     * Imports previously exported app data back to the device data directories.
+     *
+     * Reverses [exportAppData]: copies the workspace trees back to
+     * `<deviceDataRoot>/data/<appName>/` and `<deviceDataRoot>/<appName>/`.
+     *
+     * @param root         the workspace root directory
+     * @param deviceDataRoot the device's `/data` directory (e.g. `Path.of("/data")`)
+     * @param appName      the app / package name
+     */
+    fun importAppData(root: Path, deviceDataRoot: Path, appName: String) {
+        val src = appWorkspace(root, appName)
+
+        // <workspace>/<appName>/data/data/<appName>/ → /data/data/<appName>/
+        val primaryWorkspace = src.resolve("data").resolve("data").resolve(appName)
+        if (Files.isDirectory(primaryWorkspace)) {
+            copyTree(primaryWorkspace, deviceDataRoot.resolve("data").resolve(appName))
+        }
+
+        // <workspace>/<appName>/data/<appName>/ → /data/<appName>/
+        val secondaryWorkspace = src.resolve("data").resolve(appName)
+        if (Files.isDirectory(secondaryWorkspace)) {
+            copyTree(secondaryWorkspace, deviceDataRoot.resolve(appName))
+        }
     }
 
     fun listExtensions(root: Path): List<Path> {
@@ -89,6 +134,23 @@ class ModWorkspaceService {
         }
 
         return targetDir
+    }
+
+    // --- internal helpers -------------------------------------------------
+
+    internal fun copyTree(source: Path, destination: Path) {
+        destination.createDirectories()
+        Files.walk(source).use { stream ->
+            stream.forEach { src ->
+                val dest = destination.resolve(source.relativize(src))
+                if (Files.isDirectory(src)) {
+                    dest.createDirectories()
+                } else {
+                    dest.parent?.createDirectories()
+                    Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+        }
     }
 
     private fun secureResolve(root: Path, entryName: String): Path {

@@ -14,19 +14,97 @@ import kotlin.test.assertTrue
 class ModWorkspaceServiceTest {
     private val service = ModWorkspaceService()
 
+    // --- exportAppData / importAppData ------------------------------------
+
     @Test
-    fun `exports and imports save files`() {
-        val root = Files.createTempDirectory("workspace-test")
-        val source = Files.createTempFile("save", ".dat")
-        Files.writeString(source, "coins=999")
+    fun `exportAppData copies primary data-data directory into workspace`() {
+        val deviceData = Files.createTempDirectory("device-data")
+        val appPrimaryDir = deviceData.resolve("data").resolve("com.example.game")
+        appPrimaryDir.createDirectories()
+        Files.writeString(appPrimaryDir.resolve("files").also { it.createDirectories() }.resolve("savegame.dat"), "coins=500")
 
-        val exported = service.exportSave(root, "MergeDragons", source)
-        assertTrue(exported.exists())
+        val workspace = Files.createTempDirectory("workspace")
+        service.exportAppData(workspace, deviceData, "com.example.game")
 
-        val target = root.resolve("game-data").resolve("save-imported.dat")
-        service.importSave(root, "MergeDragons", exported.fileName.toString(), target)
-        assertEquals("coins=999", target.readText())
+        val exported = workspace
+            .resolve("com.example.game")
+            .resolve("data").resolve("data").resolve("com.example.game")
+            .resolve("files").resolve("savegame.dat")
+        assertTrue(exported.exists(), "Primary data dir should be exported")
+        assertEquals("coins=500", exported.readText())
     }
+
+    @Test
+    fun `exportAppData copies secondary data directory into workspace`() {
+        val deviceData = Files.createTempDirectory("device-data-sec")
+        val appSecondaryDir = deviceData.resolve("com.example.game")
+        appSecondaryDir.createDirectories()
+        Files.writeString(appSecondaryDir.resolve("prefs.dat"), "level=5")
+
+        val workspace = Files.createTempDirectory("workspace-sec")
+        service.exportAppData(workspace, deviceData, "com.example.game")
+
+        val exported = workspace
+            .resolve("com.example.game")
+            .resolve("data").resolve("com.example.game")
+            .resolve("prefs.dat")
+        assertTrue(exported.exists(), "Secondary data dir should be exported")
+        assertEquals("level=5", exported.readText())
+    }
+
+    @Test
+    fun `exportAppData skips missing directories silently`() {
+        val deviceData = Files.createTempDirectory("device-empty")
+        val workspace  = Files.createTempDirectory("workspace-empty")
+
+        // Neither /data/data/<app> nor /data/<app> exists – should not throw
+        service.exportAppData(workspace, deviceData, "com.example.game")
+
+        val appDir = workspace.resolve("com.example.game")
+        assertTrue(appDir.exists(), "App workspace dir should still be created")
+    }
+
+    @Test
+    fun `importAppData restores primary directory from workspace to device`() {
+        val workspace  = Files.createTempDirectory("ws-import")
+        val deviceData = Files.createTempDirectory("device-import")
+
+        // Simulate an already-exported workspace
+        val primaryWs = workspace
+            .resolve("com.example.game")
+            .resolve("data").resolve("data").resolve("com.example.game")
+            .resolve("files")
+        primaryWs.createDirectories()
+        Files.writeString(primaryWs.resolve("savegame.dat"), "coins=1500")
+
+        service.importAppData(workspace, deviceData, "com.example.game")
+
+        val restored = deviceData
+            .resolve("data").resolve("com.example.game")
+            .resolve("files").resolve("savegame.dat")
+        assertTrue(restored.exists(), "File should be restored to device data dir")
+        assertEquals("coins=1500", restored.readText())
+    }
+
+    @Test
+    fun `exportAppData and importAppData round-trip preserves content`() {
+        val deviceData  = Files.createTempDirectory("device-roundtrip")
+        val workspace   = Files.createTempDirectory("ws-roundtrip")
+        val restoreData = Files.createTempDirectory("device-restore")
+
+        // Set up device data
+        val saveDir = deviceData.resolve("data").resolve("com.game.test")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "gems=42\ncoins=100")
+
+        service.exportAppData(workspace, deviceData, "com.game.test")
+        service.importAppData(workspace, restoreData, "com.game.test")
+
+        val restored = restoreData.resolve("data").resolve("com.game.test").resolve("save.dat")
+        assertEquals("gems=42\ncoins=100", restored.readText())
+    }
+
+    // --- listExtensions ---------------------------------------------------
 
     @Test
     fun `lists extension bundles`() {
@@ -39,6 +117,8 @@ class ModWorkspaceServiceTest {
         assertEquals(1, extensions.size)
         assertEquals("MergeDragons.extension", extensions.first().fileName.toString())
     }
+
+    // --- listMods ---------------------------------------------------------
 
     @Test
     fun `lists user-provided mod files`() {
@@ -58,6 +138,8 @@ class ModWorkspaceServiceTest {
         val nonExistent = Path.of("/tmp/does-not-exist-${System.nanoTime()}")
         assertEquals(emptyList(), service.listMods(nonExistent))
     }
+
+    // --- unpackApk --------------------------------------------------------
 
     @Test
     fun `unpacks apk zip safely`() {

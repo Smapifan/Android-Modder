@@ -42,6 +42,9 @@ fun main(args: Array<String>) {
     println("${i18n.get("app.extensions.detected")}: ${service.listExtensions(workspace).size}")
     println("${i18n.get("app.mods.detected")}: ${service.listMods(workspace).size}")
     println()
+    println(i18n.get("cheat.how.it.works"))
+    println(i18n.get("export.how.it.works"))
+    println()
     println(i18n.format("app.catalog.title", allApps.size, ageFilteredApps.size, userAge))
     ageFilteredApps.forEach { app ->
         println("  [${app.category}] ${app.name}  ->  ${catalogService.playStoreUrl(app)}")

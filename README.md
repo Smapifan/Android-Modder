@@ -1,29 +1,79 @@
 # Android-Modder
 
-Rechtssichere MVP-Grundlage für einen Android-Modding-Workflow mit Fokus auf **Datei-Import/Export**, **Extension-Struktur** und einem **kuratierten App-Katalog**. Die App ist die **Hülle** – Mods und Extensions werden von der Community erstellt und bereitgestellt.
+Rechtssichere MVP-Grundlage für einen Android-Modding-Workflow. Die App ist die **Hülle** – sie ist Cheat-, Modding- und Launcher-Tool in einem. Mods und Extensions werden von der Community erstellt; das echte Spiel wird **niemals** gepatcht.
 
-## Enthaltene Grundlagen
+## Konzept: file-basiert, keine Mod-API nötig
 
-- Verzeichnis-Konzept (beim ersten Start auswählbar): `<workspace>` (das vom Nutzer gewählte Hauptverzeichnis)
-- App-spezifische Save-Ablage: `<workspace>/<app-name>/`
-- `Cheats.json`-Parsing für save-bezogene Metadaten (z. B. Save-Adresse)
-- Erweiterungs-Erkennung über `*.extension` (z. B. `MergeDragons.extension`)
-- APK-Export/Entpack-Basis (ZIP-sicher, ohne Schutzmaßnahmen zu umgehen)
-- `Mods/SamplePatch.cs` – Interface-Vorlage für eigene Mods
+Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu verändern**. Alles läuft über die Save-Dateien im Workspace:
+
+1. **Export** – kopiert `data/data/<appName>/` und `data/<appName>/` vom Gerät in den Workspace
+2. **Cheat/Mod anwenden** – ändert Felder in den Save-Dateien (z. B. `coins=500` → `coins=1500`)
+3. **Import** – kopiert die bearbeiteten Daten zurück
+
+```
+Gerät                         Workspace
+─────────────────────         ─────────────────────────────────────
+/data/data/<app>/   ──────►  <workspace>/<app>/data/data/<app>/
+/data/<app>/        ──────►  <workspace>/<app>/data/<app>/
+```
+
+## Cheats
+
+Cheats sind Wert-Operationen auf benannten Feldern einer Save-Datei:
+
+| Operation | Beispiel | Ergebnis |
+|-----------|----------|---------|
+| `ADD`      | coins + 1000 | fügt 1 000 Coins hinzu |
+| `SUBTRACT` | coins − 1000 | entfernt 1 000 Coins (min. 0) |
+| `SET`      | gems = 9999  | setzt Gems auf exakt 9 999 |
+
+`Cheats.json` (von der Community erweiterbar):
+```json
+[
+  { "appName": "MergeDragons", "field": "coins", "operation": "ADD",      "amount": 1000 },
+  { "appName": "MergeDragons", "field": "coins", "operation": "SUBTRACT", "amount": 1000 },
+  { "appName": "MergeDragons", "field": "gems",  "operation": "SET",      "amount": 9999 }
+]
+```
+
+```kotlin
+// Cheat anwenden – kein Game-Patching, kein Mod-API nötig
+val newValue = CheatApplier().apply(appWorkspaceDir, cheat)
+// newValue = neue Coins-Anzahl
+```
+
+`CheatApplier` sucht das Feld automatisch rekursiv im Workspace – kein fixer Save-Pfad nötig.
 
 ## Mods & Extensions – Community-Inhalte
 
-Die App liefert **keine** Mods oder Extensions mit. Jeder kann eigene Mods und Extension-Dateien für ein Spiel erstellen. Sie werden einfach in das beim Start gewählte Arbeitsverzeichnis gelegt:
+Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien (JSON) für jedes Spiel erstellen – keine API nötig. Sie kommen einfach ins Workspace-Verzeichnis:
 
 ```
 <workspace>/
-  MergeDragons.extension    ← Extension-Datei (von der Community)
-  MyCoolMod.mod             ← Mod-Datei (von der Community)
-  MergeDragons/
-    savegame.dat            ← Save-Datei
+  MergeDragons.extension    ← Extension-Datei (Community)
+  InfiniteCoins.mod         ← Mod-Datei (Community)
+  com.gram.mergedragons/
+    data/data/com.gram.mergedragons/   ← exportierte App-Daten
 ```
 
-Die App erkennt diese Dateien automatisch beim Start über `listExtensions()` und `listMods()`.
+### Mod-Dateiformat (`.mod`)
+
+```json
+{
+  "name": "InfiniteCoins",
+  "gameId": "MergeDragons",
+  "description": "Adds 10 000 coins and sets gems to 999",
+  "patches": [
+    { "field": "coins", "operation": "ADD", "amount": 10000 },
+    { "field": "gems",  "operation": "SET", "amount": 999   }
+  ]
+}
+```
+
+```kotlin
+val mod = ModLoader().load(Path.of("InfiniteCoins.mod"))
+ModLoader().applyMod(mod, appWorkspaceDir)
+```
 
 ### Extension-Interface
 

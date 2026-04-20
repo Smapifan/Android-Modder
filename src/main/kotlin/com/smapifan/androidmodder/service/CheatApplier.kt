@@ -2,6 +2,7 @@ package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.CheatOperation
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
@@ -14,7 +15,18 @@ import kotlin.io.path.writeText
  * which covers the most common save formats used by mobile games.
  *
  * No game binary is ever read or modified – all edits happen exclusively on
- * the copy of the save file that the user exported into their workspace.
+ * the copy of the app data that the user exported into their workspace via
+ * [ModWorkspaceService.exportAppData].
+ *
+ * The workspace mirrors the Android data directory structure:
+ * ```
+ * <workspace>/<appName>/
+ *   data/data/<appName>/   ← from /data/data/<appName>/
+ *   data/<appName>/        ← from /data/<appName>/
+ * ```
+ *
+ * [apply] searches the whole workspace tree for the field automatically –
+ * no save file path needs to be specified.
  *
  * Example save file content:
  * ```
@@ -22,28 +34,29 @@ import kotlin.io.path.writeText
  * gems=10
  * lives=3
  * ```
- *
- * A cheat "ADD 1000 to coins" would result in:
- * ```
- * coins=1500
- * gems=10
- * lives=3
- * ```
+ * Cheat "ADD 1000 to coins" → `coins=1500`
  */
 class CheatApplier {
 
     /**
-     * Applies [cheat] to the save file at [saveFilePath] and returns the
-     * new field value after the operation.
+     * Applies [cheat] to the first file inside [appWorkspaceDir] that contains
+     * the named field, and returns the new field value after the operation.
      *
-     * @throws IllegalArgumentException if [saveFilePath] does not exist.
+     * @throws IllegalArgumentException if [appWorkspaceDir] is not a directory.
+     * @throws IllegalStateException    if the field is not found in any file.
      */
-    fun apply(saveFilePath: Path, cheat: CheatDefinition): Long {
-        require(saveFilePath.isRegularFile()) {
-            "Save file not found in workspace: $saveFilePath"
+    fun apply(appWorkspaceDir: Path, cheat: CheatDefinition): Long {
+        require(Files.isDirectory(appWorkspaceDir)) {
+            "App workspace directory does not exist: $appWorkspaceDir"
         }
 
-        val fields = readFields(saveFilePath)
+        val saveFile = findFileWithField(appWorkspaceDir, cheat.field)
+            ?: throw IllegalStateException(
+                "Field '${cheat.field}' not found in workspace for '${cheat.appName}'. " +
+                "Export the app data first with exportAppData()."
+            )
+
+        val fields = readFields(saveFile)
         val current = fields[cheat.field]?.toLongOrNull() ?: 0L
         val newValue = when (cheat.operation) {
             CheatOperation.ADD      -> current + cheat.amount
@@ -51,7 +64,7 @@ class CheatApplier {
             CheatOperation.SET      -> cheat.amount
         }
         fields[cheat.field] = newValue.toString()
-        writeFields(saveFilePath, fields)
+        writeFields(saveFile, fields)
         return newValue
     }
 
@@ -74,5 +87,20 @@ class CheatApplier {
     internal fun writeFields(path: Path, fields: Map<String, String>) {
         val content = fields.entries.joinToString("\n") { (k, v) -> "$k=$v" }
         path.writeText(content)
+    }
+
+    /**
+     * Recursively searches [dir] for the first regular text file that
+     * contains a key=value line whose key matches [field].
+     */
+    internal fun findFileWithField(dir: Path, field: String): Path? {
+        Files.walk(dir).use { stream ->
+            return stream
+                .filter { it.isRegularFile() }
+                .sorted()
+                .firstOrNull { path ->
+                    runCatching { readFields(path).containsKey(field) }.getOrDefault(false)
+                }
+        }
     }
 }

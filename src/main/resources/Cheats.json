@@ -1,13 +1,26 @@
 [
   {
     "appName": "MergeDragons",
-    "saveFileRelativePath": "files/savegame.dat",
-    "saveAddress": "0x0010FFAA",
-    "memoryAddress": "0x1000ABCD"
+    "field": "coins",
+    "operation": "ADD",
+    "amount": 1000
+  },
+  {
+    "appName": "MergeDragons",
+    "field": "coins",
+    "operation": "SUBTRACT",
+    "amount": 1000
+  },
+  {
+    "appName": "MergeDragons",
+    "field": "gems",
+    "operation": "SET",
+    "amount": 9999
   },
   {
     "appName": "StardewValley",
-    "saveFileRelativePath": "files/Farmer123456",
-    "saveAddress": "0x00AA20BC"
+    "field": "money",
+    "operation": "ADD",
+    "amount": 1000
   }
 ]
