@@ -1,6 +1,4 @@
-package com.smapifan.androidmodder.service
-
-import java.nio.file.Path
+package com.smapifan.androidmodder.model
 
 /**
  * Configuration for launching a game through Android-Modder's launcher.

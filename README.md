@@ -10,6 +10,26 @@ Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu v
 2. **Cheat/Mod anwenden** – ändert Felder in den Save-Dateien (z. B. `coins=500` → `coins=1500`)
 3. **Import** – kopiert die bearbeiteten Daten zurück
 
+## Launcher-Zyklus
+
+Android-Modder ist der Launcher. Der Nutzer startet das Spiel nicht direkt, sondern über diese App:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  1. PRE-LAUNCH                                          │
+│     exportAppData()  → /data/data/<pkg>/  (Root)        │
+│     exportExternalData() → /sdcard/Android/data/<pkg>/  │
+│     Cheats / Mods auf exportierte Save-Daten anwenden   │
+├─────────────────────────────────────────────────────────┤
+│  2. GAME LAUNCH                                         │
+│     am start -n <pkg>/<Activity>                        │
+│     Spiel läuft normal in seiner Sandbox                │
+├─────────────────────────────────────────────────────────┤
+│  3. POST-EXIT                                           │
+│     importAppData()  → zurück auf das Gerät             │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Speicherzugriff: Root vs. External Storage
 
 | Pfad auf dem Gerät | Root nötig? | Methode |
@@ -17,8 +37,6 @@ Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu v
 | `/data/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
 | `/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
 | `/sdcard/Android/data/<pkg>/` | ❌ **Nein** | `exportExternalData()` / `importExternalData()` |
-
-Viele Spiele speichern (zumindest Teile) ihrer Daten im External Storage – der ist ohne Root erreichbar. Für den vollen Zugriff auf `/data/data/` ist ein gerootetes Gerät nötig.
 
 ```
 Gerät (intern, Root)                    Workspace
@@ -31,13 +49,19 @@ Gerät (extern, kein Root)
 /sdcard/Android/data/<pkg>/ ─────►     <workspace>/<app>/external/<pkg>/
 ```
 
-```kotlin
-// Internes Export (Root erforderlich)
-service.exportAppData(workspace, Path.of("/data"), "com.gram.mergedragons")
+## Sample Workspace
 
-// Externes Export (kein Root nötig)
-service.exportExternalData(workspace, Path.of("/sdcard"), "com.gram.mergedragons")
-```
+Das Repo enthält unter `sample_workspace/` realistische Beispiel-Save-Dateien mit echten Feldnamen:
+
+| Spiel | Package | Save-Datei | Root? |
+|---|---|---|---|
+| Merge Dragons! | `com.gram.mergedragons` | `files/save.dat` | ✅ |
+| Subway Surfers | `com.kiloo.subwaysurf` | `files/playerData.dat` | ✅ |
+| Minecraft Bedrock | `com.mojang.minecraftpe` | `options.txt` (ext.) | ❌ |
+| Clash of Clans | `com.supercell.clashofclans` | `files/sc.cfg` (local cache) | ✅ |
+| Stardew Valley | `net.stardewvalley` | `files/saves/Player_*` | ✅ |
+
+> **Hinweis zu Save-Formaten:** Mobile Games nutzen verschiedene Formate – JSON, XML, SQLite, binäre Daten. Der `CheatApplier` unterstützt derzeit das `key=value`-Format (ein Eintrag pro Zeile). Die Sample-Saves in diesem Repo sind in diesem Format gehalten.
 
 ## Cheats
 

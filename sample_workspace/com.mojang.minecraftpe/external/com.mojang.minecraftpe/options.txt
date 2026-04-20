@@ -1,0 +1,17 @@
+# Minecraft Bedrock Edition – com.mojang.minecraftpe
+# options.txt liegt im External Storage: /sdcard/Android/data/com.mojang.minecraftpe/
+# Kein Root erforderlich! Cheats: difficulty SET 0 | render_distance SET 12
+
+gfx_vsync:1
+gfx_renderDistanceType:0
+render_distance:8
+gfx_maxfps:60
+difficulty:2
+fov:70
+touchscreen_sensitivity:0.6
+auto_jump:1
+fancy_graphics:1
+smooth_lighting:1
+show_coordinates:1
+gui_scale:0
+username:Steve

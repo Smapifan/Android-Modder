@@ -1,0 +1,17 @@
+# Subway Surfers – com.kiloo.subwaysurf
+# Echte Save-Felder (exportiert aus /data/data/com.kiloo.subwaysurf/files/playerData.dat)
+# Cheats: coins ADD 10000 | keys ADD 10 | hoverboards SET 5
+
+coins=34200
+keys=2
+highScore=812500
+totalDistance=4830000
+hoverboards=1
+superSneakers=0
+coinMagnet=0
+jetpack=0
+multiplier=2
+characters_unlocked=Jake
+boards_unlocked=Default
+totalRuns=318
+lastRunScore=45200

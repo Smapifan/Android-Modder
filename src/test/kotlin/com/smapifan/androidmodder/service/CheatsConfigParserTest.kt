@@ -10,8 +10,8 @@ class CheatsConfigParserTest {
         val json = """
             [
               {
-                "appName": "MergeDragons",
-                "field": "coins",
+                "appName": "com.gram.mergedragons",
+                "field": "CoinCount",
                 "operation": "ADD",
                 "amount": 1000
               }
@@ -22,8 +22,8 @@ class CheatsConfigParserTest {
 
         assertEquals(1, parsed.size)
         with(parsed.first()) {
-            assertEquals("MergeDragons", appName)
-            assertEquals("coins", field)
+            assertEquals("com.gram.mergedragons", appName)
+            assertEquals("CoinCount", field)
             assertEquals(CheatOperation.ADD, operation)
             assertEquals(1000L, amount)
         }
@@ -34,8 +34,8 @@ class CheatsConfigParserTest {
         val json = """
             [
               {
-                "appName": "MergeDragons",
-                "field": "coins",
+                "appName": "com.gram.mergedragons",
+                "field": "CoinCount",
                 "operation": "SUBTRACT",
                 "amount": 500
               }
@@ -53,10 +53,10 @@ class CheatsConfigParserTest {
         val json = """
             [
               {
-                "appName": "StardewValley",
+                "appName": "net.stardewvalley",
                 "field": "money",
                 "operation": "SET",
-                "amount": 9999
+                "amount": 50000
               }
             ]
         """.trimIndent()
@@ -65,19 +65,20 @@ class CheatsConfigParserTest {
 
         assertEquals(CheatOperation.SET, parsed.first().operation)
         assertEquals("money", parsed.first().field)
-        assertEquals(9999L, parsed.first().amount)
+        assertEquals(50000L, parsed.first().amount)
     }
 
     @Test
     fun `parses multiple cheat entries`() {
         val json = """
             [
-              { "appName": "Game1", "field": "coins", "operation": "ADD",      "amount": 1000 },
-              { "appName": "Game1", "field": "coins", "operation": "SUBTRACT", "amount": 100  },
-              { "appName": "Game2", "field": "lives", "operation": "SET",      "amount": 99   }
+              { "appName": "com.gram.mergedragons",  "field": "CoinCount",  "operation": "ADD",      "amount": 1000 },
+              { "appName": "com.gram.mergedragons",  "field": "GemCount",   "operation": "SET",      "amount": 999  },
+              { "appName": "com.kiloo.subwaysurf",   "field": "coins",      "operation": "ADD",      "amount": 10000 },
+              { "appName": "net.stardewvalley",      "field": "stamina",    "operation": "SET",      "amount": 270  }
             ]
         """.trimIndent()
 
-        assertEquals(3, CheatsConfigParser().parse(json).size)
+        assertEquals(4, CheatsConfigParser().parse(json).size)
     }
 }

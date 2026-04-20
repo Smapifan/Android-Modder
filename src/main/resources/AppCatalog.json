@@ -66,6 +66,12 @@
     "minAgeRating": 6
   },
   {
+    "name": "Stardew Valley",
+    "packageName": "net.stardewvalley",
+    "category": "Spiele",
+    "minAgeRating": 6
+  },
+  {
     "name": "Subway Surfers",
     "packageName": "com.kiloo.subwaysurf",
     "category": "Spiele",

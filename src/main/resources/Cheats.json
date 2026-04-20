@@ -1,26 +1,62 @@
 [
   {
-    "appName": "MergeDragons",
-    "field": "coins",
+    "appName": "com.gram.mergedragons",
+    "field": "CoinCount",
     "operation": "ADD",
     "amount": 1000
   },
   {
-    "appName": "MergeDragons",
-    "field": "coins",
+    "appName": "com.gram.mergedragons",
+    "field": "CoinCount",
     "operation": "SUBTRACT",
     "amount": 1000
   },
   {
-    "appName": "MergeDragons",
-    "field": "gems",
+    "appName": "com.gram.mergedragons",
+    "field": "GemCount",
     "operation": "SET",
-    "amount": 9999
+    "amount": 999
   },
   {
-    "appName": "StardewValley",
+    "appName": "com.gram.mergedragons",
+    "field": "ChaliceCount",
+    "operation": "SET",
+    "amount": 5
+  },
+  {
+    "appName": "com.kiloo.subwaysurf",
+    "field": "coins",
+    "operation": "ADD",
+    "amount": 10000
+  },
+  {
+    "appName": "com.kiloo.subwaysurf",
+    "field": "keys",
+    "operation": "ADD",
+    "amount": 10
+  },
+  {
+    "appName": "com.kiloo.subwaysurf",
+    "field": "hoverboards",
+    "operation": "SET",
+    "amount": 5
+  },
+  {
+    "appName": "net.stardewvalley",
     "field": "money",
     "operation": "ADD",
-    "amount": 1000
+    "amount": 50000
+  },
+  {
+    "appName": "net.stardewvalley",
+    "field": "health",
+    "operation": "SET",
+    "amount": 100
+  },
+  {
+    "appName": "net.stardewvalley",
+    "field": "stamina",
+    "operation": "SET",
+    "amount": 270
   }
 ]
