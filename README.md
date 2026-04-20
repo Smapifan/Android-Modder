@@ -4,10 +4,10 @@ Rechtssichere MVP-Grundlage für einen Android-Modding-Workflow mit Fokus auf **
 
 ## Enthaltene Grundlagen
 
-- Workspace-Konzept (beim ersten Start auswählbar): `{{1}}`
+- Verzeichnis-Konzept (beim ersten Start auswählbar): `{{1}}` (das vom Nutzer gewählte Hauptverzeichnis)
 - App-spezifische Save-Ablage: `{{1}}/{{app name}}/`
 - `Cheats.json`-Parsing für save-bezogene Metadaten (z. B. Save-Adresse)
-- Extension-Erkennung über `*.extension` (z. B. `MergeDragons.extension`)
+- Erweiterungs-Erkennung über `*.extension` (z. B. `MergeDragons.extension`)
 - APK-Export/Entpack-Basis (ZIP-sicher, ohne Schutzmaßnahmen zu umgehen)
 - `Mods/`-Ordner mit C#-Patch-Interface als Extension-Einstieg
 

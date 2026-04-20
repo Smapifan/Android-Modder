@@ -49,7 +49,9 @@ class ModWorkspaceService {
     }
 
     fun unpackApk(apkPath: Path, destinationRoot: Path): Path {
-        require(apkPath.extension.lowercase() == "apk") { "Only .apk files are supported." }
+        require(apkPath.extension.lowercase() == "apk") {
+            "Only .apk files are supported, but received extension: ${apkPath.extension.ifBlank { "<none>" }}"
+        }
 
         val targetDir = destinationRoot.resolve(apkPath.fileName.toString().removeSuffix(".apk"))
         targetDir.createDirectories()
