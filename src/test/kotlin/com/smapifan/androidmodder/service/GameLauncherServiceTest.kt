@@ -2,6 +2,7 @@ package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.CheatOperation
+import com.smapifan.androidmodder.model.DataAccessStrategy
 import com.smapifan.androidmodder.model.GameLaunchConfig
 import com.smapifan.androidmodder.model.ModDefinition
 import com.smapifan.androidmodder.model.ModPatch
@@ -403,5 +404,99 @@ class GameLauncherServiceTest {
 
         val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
         assertEquals("0", fields["gems"], "ON_DEMAND mod must not fire at pre-launch even with overlayService")
+    }
+
+    // ── DataAccessStrategy dispatch ─────────────────────────────────────────
+
+    @Test
+    fun `EXTERNAL_STORAGE strategy issues only external-storage shell commands`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("strategy-external")
+
+        val service = makeService(shell = fake)
+        service.launch(
+            ws,
+            baseConfig().copy(dataAccessStrategy = DataAccessStrategy.EXTERNAL_STORAGE)
+        )
+
+        // Should NOT issue any 'su' root commands for data copy
+        assertFalse(
+            fake.commands.any { it.second },
+            "EXTERNAL_STORAGE must not issue any root (su) commands"
+        )
+    }
+
+    @Test
+    fun `ROOT strategy issues su cp commands for export and import`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("strategy-root")
+
+        val service = makeService(shell = fake)
+        service.launch(
+            ws,
+            baseConfig().copy(
+                dataAccessStrategy = DataAccessStrategy.ROOT,
+                importAfterExit    = true
+            )
+        )
+
+        // ROOT strategy must issue root (asRoot=true) cp commands
+        val rootCmds = fake.commands.filter { it.second }
+        assertTrue(rootCmds.isNotEmpty(), "ROOT strategy must issue asRoot=true cp commands")
+        assertTrue(rootCmds.all { (cmd, _) -> cmd.startsWith("cp ") })
+    }
+
+    @Test
+    fun `useRootForData=true maps to ROOT strategy (legacy compat)`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("strategy-legacy-root")
+
+        val service = makeService(shell = fake)
+        service.launch(
+            ws,
+            // Old-style: useRootForData without explicit dataAccessStrategy
+            baseConfig().copy(useRootForData = true)
+        )
+
+        val rootCmds = fake.commands.filter { it.second }
+        assertTrue(rootCmds.isNotEmpty(), "useRootForData=true must behave like ROOT strategy")
+    }
+
+    @Test
+    fun `RUN_AS strategy issues run-as commands (no su) for export`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("strategy-runas")
+
+        val service = makeService(shell = fake)
+        service.launch(
+            ws,
+            baseConfig().copy(dataAccessStrategy = DataAccessStrategy.RUN_AS)
+        )
+
+        // run-as command must appear
+        assertTrue(
+            fake.commands.any { (cmd, _) -> cmd.startsWith("run-as") },
+            "RUN_AS strategy must issue run-as commands"
+        )
+        // No root commands for data export/import
+        assertFalse(
+            fake.commands.filter { (cmd, _) -> cmd.startsWith("cp ") }.any { it.second },
+            "RUN_AS strategy must not use su for cp"
+        )
+    }
+
+    @Test
+    fun `effectiveStrategy resolves useRootForData legacy flag correctly`() {
+        val cfgDefault = baseConfig()
+        assertEquals(DataAccessStrategy.EXTERNAL_STORAGE, cfgDefault.effectiveStrategy)
+
+        val cfgLegacyRoot = baseConfig().copy(useRootForData = true)
+        assertEquals(DataAccessStrategy.ROOT, cfgLegacyRoot.effectiveStrategy)
+
+        val cfgExplicitRunAs = baseConfig().copy(
+            dataAccessStrategy = DataAccessStrategy.RUN_AS,
+            useRootForData     = true   // explicit strategy wins
+        )
+        assertEquals(DataAccessStrategy.RUN_AS, cfgExplicitRunAs.effectiveStrategy)
     }
 }

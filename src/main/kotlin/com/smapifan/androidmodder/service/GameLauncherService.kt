@@ -1,7 +1,9 @@
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition
+import com.smapifan.androidmodder.model.DataAccessStrategy
 import com.smapifan.androidmodder.model.GameLaunchConfig
+import com.smapifan.androidmodder.model.ModDefinition
 import com.smapifan.androidmodder.model.SaveDataAction
 import com.smapifan.androidmodder.model.TriggerMode
 import java.nio.file.Path
@@ -14,44 +16,55 @@ import java.nio.file.Path
  * ```
  * ┌──────────────────────────────────────────────────────────────────────────┐
  * │  1. PRE-LAUNCH                                                           │
- * │     • exportInternalWithRoot()  (ROOT – /data/data/<pkg>/)              │
- * │     • exportExternalData()      (no root – /sdcard/Android/data/<pkg>/) │
+ * │     • Export save data → workspace  (strategy-dependent, see below)     │
  * │     • All matching cheats from [cheats] applied to workspace            │
  * │     • All matching *.mod files with triggerMode=ON_LAUNCH applied       │
- * │       (mods with ON_DEMAND / ON_AUTOSAVE are deferred to overlay)       │
+ * │       (mods with ON_DEMAND / ON_AUTOSAVE deferred to overlay session)   │
  * │     • Per-mod SaveDataAction.IMPORT: workspace → external storage       │
  * │     • Optional extra preHooks                                            │
  * ├──────────────────────────────────────────────────────────────────────────┤
  * │  2. GAME LAUNCH                                                          │
  * │     • `am start -n <package>/<activity>` via shell                      │
- * │     • Game runs in its **normal sandbox**, completely unmodified        │
+ * │     • Game runs in its own normal sandbox – completely unmodified       │
  * │     • Game reads the (now-patched) save files                           │
  * ├──────────────────────────────────────────────────────────────────────────┤
  * │  2b. OVERLAY SESSION  (only when overlayService is provided)            │
  * │     • ModOverlayService session started                                  │
  * │     • ON_AUTOSAVE mods polled at regular intervals                      │
- * │     • ON_DEMAND buttons available to the user via overlay HUD           │
+ * │     • ON_DEMAND buttons available via the floating HUD                  │
+ * │     • For PROCESS_MEMORY strategy: live memory patching applied here    │
  * │     • Blocks until game process exits                                    │
  * ├──────────────────────────────────────────────────────────────────────────┤
  * │  3. POST-EXIT  (importAfterExit = true)                                 │
  * │     • Optional postHooks                                                 │
- * │     • importInternalWithRoot()  (ROOT required)                         │
- * │     • importExternalData()      (no root)                               │
+ * │     • Import workspace → device  (strategy-dependent)                  │
  * └──────────────────────────────────────────────────────────────────────────┘
  * ```
  *
- * Cheats and ON_LAUNCH mods are applied **automatically** – no wiring needed.
- * The real game binary is **never patched**.
+ * ## Data-access strategies
  *
- * @param cheats           all known cheat definitions (only those whose
- *                         [CheatDefinition.appName] matches are applied)
+ * | Strategy          | Export/import how?              | Root? |
+ * |-------------------|---------------------------------|-------|
+ * | EXTERNAL_STORAGE  | WorkspaceService file copy      | No    |
+ * | RUN_AS            | `run-as <pkg>` shell commands   | No*   |
+ * | ROOT              | `su -c "cp …"` shell commands   | Yes   |
+ * | PROCESS_MEMORY    | /proc/<pid>/mem (live injection)| Yes** |
+ *
+ * *  RUN_AS requires the app to be `android:debuggable="true"`.
+ * ** PROCESS_MEMORY requires root or ptrace capability.
+ *
+ * The game is **always** started with `am start` – it runs in its own
+ * normal sandbox and is **never** patched at the binary level.
+ *
+ * @param cheats           all known cheat definitions (filtered to matching package)
  * @param workspaceService manages workspace directories and file copies
  * @param cheatApplier     applies individual cheat operations to save files
  * @param modLoader        discovers and applies `*.mod` files
- * @param shell            executes shell commands (and root commands via `su`)
- * @param overlayService   optional overlay coordinator; when supplied the launcher
- *                         waits for the game to exit via process monitoring
- *                         before entering the post-exit phase
+ * @param shell            executes shell commands
+ * @param overlayService   optional overlay coordinator; enables process monitoring
+ *                         and deferred ON_DEMAND/ON_AUTOSAVE mods
+ * @param processMemory    optional live-memory injection service; used when
+ *                         [DataAccessStrategy.PROCESS_MEMORY] is selected
  */
 class GameLauncherService(
     private val cheats: List<CheatDefinition> = emptyList(),
@@ -59,25 +72,17 @@ class GameLauncherService(
     private val cheatApplier: CheatApplier = CheatApplier(),
     private val modLoader: ModLoader = ModLoader(),
     private val shell: ShellExecutor = ShellExecutor(),
-    private val overlayService: ModOverlayService? = null
+    private val overlayService: ModOverlayService? = null,
+    private val processMemory: ProcessMemoryService? = null
 ) {
 
     /**
      * Runs the full launch cycle for [config].
      *
-     * ### Mod trigger modes
-     * - **ON_LAUNCH** mods are applied during pre-launch (step 1), same as cheats.
-     * - **ON_AUTOSAVE** and **ON_DEMAND** mods are handed off to [overlayService]
-     *   and are applied while the game is running (step 2b).  If no
-     *   [overlayService] is configured these mods are silently skipped.
-     *
-     * ### saveDataAction wiring
-     * After a mod's ON_LAUNCH patches are applied, if the mod declares
-     * [SaveDataAction.IMPORT] the modified workspace data is immediately pushed
-     * to external storage so the game finds the new values the moment it starts.
+     * See the class-level diagram for the precise step order.
      *
      * @param workspace  workspace root directory
-     * @param config     launch parameters (package name, shell command, root flag, …)
+     * @param config     launch parameters (package name, shell command, strategy, …)
      * @param preHooks   optional callbacks run after auto-cheats/mods but before launch
      * @param postHooks  optional callbacks run after game exit, before import
      * @return the [ShellResult] of the `am start` command
@@ -88,22 +93,20 @@ class GameLauncherService(
         preHooks: List<() -> Unit> = emptyList(),
         postHooks: List<() -> Unit> = emptyList()
     ): ShellResult {
-        val sdcard = java.nio.file.Path.of(config.externalStorageRoot)
-        val appDir = workspaceService.appWorkspace(workspace, config.packageName)
+        val sdcard   = java.nio.file.Path.of(config.externalStorageRoot)
+        val appDir   = workspaceService.appWorkspace(workspace, config.packageName)
+        val strategy = config.effectiveStrategy
 
         // ── 1. PRE-LAUNCH: export data to workspace ───────────────────────────
-        if (config.useRootForData) {
-            exportInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
-        }
-        workspaceService.exportExternalData(workspace, sdcard, config.packageName)
+        exportData(strategy, config, workspace, sdcard)
 
         // ── 1b. AUTO-APPLY CHEATS ────────────────────────────────────────────
         cheats
             .filter { it.appName == config.packageName }
             .forEach { cheat -> runCatching { cheatApplier.apply(appDir, cheat) } }
 
-        // ── 1c. AUTO-APPLY ON_LAUNCH MODS from workspace ─────────────────────
-        // Mods with other trigger modes are handled by the overlay session (step 2b).
+        // ── 1c. AUTO-APPLY ON_LAUNCH MODS ────────────────────────────────────
+        // ON_DEMAND and ON_AUTOSAVE mods are handled by the overlay session (step 2b).
         val allActiveMods = workspaceService.listMods(workspace).mapNotNull { modPath ->
             runCatching { modLoader.load(modPath) }.getOrNull()
                 ?.takeIf { it.gameId == config.packageName }
@@ -114,7 +117,7 @@ class GameLauncherService(
             .forEach { mod ->
                 runCatching { modLoader.applyMod(mod, appDir) }
                     .onSuccess {
-                        // Honour per-mod IMPORT directive: push to device before launch
+                        // Honour per-mod IMPORT directive: push data before launch
                         if (mod.saveDataAction == SaveDataAction.IMPORT) {
                             runCatching {
                                 workspaceService.importExternalData(workspace, sdcard, config.packageName)
@@ -129,53 +132,202 @@ class GameLauncherService(
         // ── 2. LAUNCH GAME ───────────────────────────────────────────────────
         val launchResult = shell.execute(config.launchCommand)
 
-        // ── 2b. OVERLAY SESSION (optional) ───────────────────────────────────
-        // Start the overlay session for ON_DEMAND / ON_AUTOSAVE mods and block
-        // until the game process exits.  Skipped entirely when overlayService
-        // is null (preserves the original synchronous behaviour for tests and
-        // callers that do not need process monitoring).
-        if (overlayService != null) {
-            val overlayMods = allActiveMods.filter {
-                it.triggerMode == TriggerMode.ON_DEMAND ||
-                it.triggerMode == TriggerMode.ON_AUTOSAVE
-            }
-            val session = overlayService.startSession(
-                mods               = overlayMods,
-                appWorkspaceDir    = appDir,
-                packageName        = config.packageName,
-                workspace          = workspace,
-                externalStorageRoot = sdcard
+        // ── 2b. OVERLAY SESSION + PROCESS-MEMORY INJECTION ───────────────────
+        if (overlayService != null || strategy == DataAccessStrategy.PROCESS_MEMORY) {
+            runOverlaySession(
+                config        = config,
+                allActiveMods = allActiveMods,
+                appDir        = appDir,
+                workspace     = workspace,
+                sdcard        = sdcard
             )
-            try {
-                // Block until the game process terminates
-                session.waitForGameExit()
-            } finally {
-                session.stop()
-            }
         }
 
         // ── 3. POST-EXIT: import data back to device ─────────────────────────
         if (config.importAfterExit) {
             postHooks.forEach { it() }
-
-            if (config.useRootForData) {
-                importInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
-            }
-            workspaceService.importExternalData(workspace, sdcard, config.packageName)
+            importData(strategy, config, workspace, sdcard)
         }
 
         return launchResult
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Root shell helpers
+    //  Strategy dispatch: export
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Exports save data from the device to the workspace using the appropriate strategy.
+     *
+     * - [DataAccessStrategy.EXTERNAL_STORAGE] – copies `/sdcard/Android/data/<pkg>/`
+     * - [DataAccessStrategy.RUN_AS]           – uses `run-as <pkg>` to copy `/data/data/<pkg>/`
+     * - [DataAccessStrategy.ROOT]             – uses `su` to copy `/data/data/<pkg>/`
+     * - [DataAccessStrategy.PROCESS_MEMORY]   – only exports external storage (memory is live)
+     */
+    private fun exportData(
+        strategy: DataAccessStrategy,
+        config: GameLaunchConfig,
+        workspace: Path,
+        sdcard: Path
+    ) {
+        when (strategy) {
+            DataAccessStrategy.EXTERNAL_STORAGE,
+            DataAccessStrategy.PROCESS_MEMORY -> {
+                // External storage only: no root, accessible to all apps
+                workspaceService.exportExternalData(workspace, sdcard, config.packageName)
+            }
+            DataAccessStrategy.RUN_AS -> {
+                // Use run-as to access internal app data without full root
+                exportWithRunAs(config.packageName, config.deviceDataRoot, workspace)
+                workspaceService.exportExternalData(workspace, sdcard, config.packageName)
+            }
+            DataAccessStrategy.ROOT -> {
+                // Use root for both internal and external
+                exportInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
+                workspaceService.exportExternalData(workspace, sdcard, config.packageName)
+            }
+        }
+    }
+
+    /**
+     * Imports workspace data back to the device using the appropriate strategy.
+     *
+     * - [DataAccessStrategy.EXTERNAL_STORAGE] – copies workspace back to `/sdcard/…`
+     * - [DataAccessStrategy.RUN_AS]           – uses `run-as <pkg>` to write `/data/data/<pkg>/`
+     * - [DataAccessStrategy.ROOT]             – uses `su` to write `/data/data/<pkg>/`
+     * - [DataAccessStrategy.PROCESS_MEMORY]   – only imports external storage
+     */
+    private fun importData(
+        strategy: DataAccessStrategy,
+        config: GameLaunchConfig,
+        workspace: Path,
+        sdcard: Path
+    ) {
+        when (strategy) {
+            DataAccessStrategy.EXTERNAL_STORAGE,
+            DataAccessStrategy.PROCESS_MEMORY -> {
+                workspaceService.importExternalData(workspace, sdcard, config.packageName)
+            }
+            DataAccessStrategy.RUN_AS -> {
+                importWithRunAs(config.packageName, config.deviceDataRoot, workspace)
+                workspaceService.importExternalData(workspace, sdcard, config.packageName)
+            }
+            DataAccessStrategy.ROOT -> {
+                importInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
+                workspaceService.importExternalData(workspace, sdcard, config.packageName)
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Overlay session + live memory injection
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Starts an [ModOverlayService.OverlaySession] for ON_DEMAND/ON_AUTOSAVE mods
+     * and, if [DataAccessStrategy.PROCESS_MEMORY] is active, applies live memory
+     * patches once the game process is found.
+     *
+     * Blocks until the game process exits (via [ModOverlayService.OverlaySession.waitForGameExit]).
+     */
+    private fun runOverlaySession(
+        config: GameLaunchConfig,
+        allActiveMods: List<ModDefinition>,
+        appDir: Path,
+        workspace: Path,
+        sdcard: Path
+    ) {
+        // ── Live memory injection (PROCESS_MEMORY strategy) ──────────────────
+        if (config.effectiveStrategy == DataAccessStrategy.PROCESS_MEMORY && processMemory != null) {
+            applyProcessMemoryPatches(allActiveMods, config.packageName)
+        }
+
+        // ── Overlay session (ON_DEMAND / ON_AUTOSAVE mods) ───────────────────
+        if (overlayService != null) {
+            val overlayMods = allActiveMods.filter {
+                it.triggerMode == TriggerMode.ON_DEMAND ||
+                it.triggerMode == TriggerMode.ON_AUTOSAVE
+            }
+            val session = overlayService.startSession(
+                mods                = overlayMods,
+                appWorkspaceDir     = appDir,
+                packageName         = config.packageName,
+                workspace           = workspace,
+                externalStorageRoot = sdcard
+            )
+            try {
+                session.waitForGameExit()
+            } finally {
+                session.stop()
+            }
+        }
+    }
+
+    /**
+     * Applies ON_LAUNCH mod patches directly to the live game process via
+     * [ProcessMemoryService.searchAndPatch].
+     *
+     * Only patches where the search yields exactly one address are applied,
+     * preventing accidental corruption of unrelated memory regions.
+     */
+    private fun applyProcessMemoryPatches(mods: List<ModDefinition>, packageName: String) {
+        val pid = processMemory?.findPid(packageName) ?: return
+        mods
+            .filter { it.triggerMode == TriggerMode.ON_LAUNCH }
+            .forEach { mod ->
+                mod.patches.forEach { patch ->
+                    runCatching {
+                        processMemory?.searchAndPatch(
+                            pid          = pid,
+                            currentValue = patch.amount.toInt(),
+                            newValue     = patch.amount.toInt()
+                        )
+                    }
+                }
+            }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  RunAs helpers (internal data, no full root, debuggable apps)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Exports internal app data to the workspace via `run-as <pkg>`.
+     *
+     * Copies `/data/data/<pkg>/` → `<workspace>/<pkg>/internal/data/data/<pkg>/`.
+     * No root required; the target app must be debuggable.
+     */
+    internal fun exportWithRunAs(packageName: String, deviceDataRoot: String, workspace: Path) {
+        val runAs = RunAsExecutor(packageName, shell)
+        val dest  = workspaceService.appWorkspace(workspace, packageName)
+            .resolve("internal").resolve("data").resolve("data").resolve(packageName)
+        dest.toFile().mkdirs()
+        runAs.exportDataDir("$deviceDataRoot/data/$packageName", dest.toString())
+    }
+
+    /**
+     * Imports workspace internal data back via `run-as <pkg>`.
+     *
+     * Reverses [exportWithRunAs].
+     */
+    internal fun importWithRunAs(packageName: String, deviceDataRoot: String, workspace: Path) {
+        val runAs = RunAsExecutor(packageName, shell)
+        val src   = workspaceService.appWorkspace(workspace, packageName)
+            .resolve("internal").resolve("data").resolve("data").resolve(packageName)
+        if (src.toFile().isDirectory) {
+            runAs.importDataDir(src.toString(), "$deviceDataRoot/data/$packageName")
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Root shell helpers (internal data, full root required)
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Copies `/data/data/<pkg>/` and `/data/<pkg>/` into the workspace using
      * a root shell command (`su -c "cp -r ..."`).
      *
-     * The workspace mirror structure is:
+     * Workspace mirror:
      * - `/data/data/<pkg>/`  → `<workspace>/<pkg>/internal/data/data/<pkg>/`
      * - `/data/<pkg>/`       → `<workspace>/<pkg>/internal/data/<pkg>/`
      */
