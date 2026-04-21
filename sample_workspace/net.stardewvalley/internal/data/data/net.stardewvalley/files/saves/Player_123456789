@@ -1,0 +1,22 @@
+# Stardew Valley – net.stardewvalley
+# Echte Save-Felder aus dem XML-Save (vereinfacht für CheatApplier)
+# Originaldatei liegt als XML vor; diese Datei spiegelt die numerischen Schlüsselfelder wider.
+# Cheats: money ADD 50000 | health SET 100 | stamina SET 270
+
+money=12480
+health=85
+maxHealth=100
+stamina=245
+maxStamina=270
+experience_farming=2800
+experience_fishing=1500
+experience_foraging=900
+experience_combat=1200
+experience_mining=1700
+daysPlayed=47
+year=1
+season=2
+day=18
+farmName=Sonnenhof
+playerName=Alex
+totalEarnings=38400

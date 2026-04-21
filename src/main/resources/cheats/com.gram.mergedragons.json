@@ -1,0 +1,6 @@
+[
+  { "appName": "com.gram.mergedragons", "field": "CoinCount",    "operation": "ADD",      "amount": 1000 },
+  { "appName": "com.gram.mergedragons", "field": "CoinCount",    "operation": "SUBTRACT", "amount": 1000 },
+  { "appName": "com.gram.mergedragons", "field": "GemCount",     "operation": "SET",      "amount": 999  },
+  { "appName": "com.gram.mergedragons", "field": "ChaliceCount", "operation": "SET",      "amount": 5    }
+]

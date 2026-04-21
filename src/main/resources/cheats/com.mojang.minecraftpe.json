@@ -1,0 +1,4 @@
+[
+  { "appName": "com.mojang.minecraftpe", "field": "emeralds", "operation": "SET", "amount": 64 },
+  { "appName": "com.mojang.minecraftpe", "field": "diamonds", "operation": "SET", "amount": 64 }
+]

@@ -1,0 +1,14 @@
+# Merge Dragons! – com.gram.mergedragons
+# Echte Save-Felder (exportiert aus /data/data/com.gram.mergedragons/files/save.dat)
+# Cheats: CoinCount ADD/SUBTRACT 1000 | GemCount SET 999 | ChaliceCount SET 5
+
+CoinCount=12500
+GemCount=20
+ChaliceCount=4
+Stars=187
+Level=38
+DragonPower=2340
+MergeXP=98450
+EventCurrency=15
+TotalPlayTimeSeconds=183600
+LastSaveTimestamp=1713600000
