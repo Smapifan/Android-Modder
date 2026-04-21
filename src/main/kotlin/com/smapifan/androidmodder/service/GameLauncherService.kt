@@ -135,8 +135,11 @@ class GameLauncherService(
         // ON_DEMAND and ON_AUTOSAVE mods are handled by the overlay session (step 2b).
         val appSpecificMods = workspaceService.listModsForApp(workspace, config.packageName)
         val legacyRootMods = workspaceService.listMods(workspace)
+        val seenNormalizedPaths = linkedSetOf<String>()
         val allActiveMods = (appSpecificMods + legacyRootMods)
-            .distinctBy { it.toAbsolutePath().normalize().toString() }
+            .filter { modPath ->
+                seenNormalizedPaths.add(modPath.toAbsolutePath().normalize().toString())
+            }
             .mapNotNull { modPath ->
             runCatching { modLoader.load(modPath) }.getOrNull()
                 ?.takeIf { it.gameId == config.packageName }
