@@ -215,3 +215,21 @@ Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen (in
 ./gradlew test
 ./gradlew run --args="/pfad/zu/<workspace>"
 ```
+
+## Dev- vs. User-Build
+
+- **USER** (Standard): keine Dev-Tools über CLI
+- **DEV**: zusätzliche CLI-Operationen für Export/Unpack
+
+Build-Channel setzen:
+
+```bash
+./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-export-package=com.gram.mergedragons"
+./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-unpack-apk=/pfad/app.apk --dev-readable-index"
+```
+
+User-Build blockiert Dev-Operationen automatisch.
+
+CI-Workflow: `.github/workflows/apk-build-dev-user.yml`
+- Variant `dev` → `com.smapifan.androidmodder.dev`
+- Variant `user` → `com.smapifan.androidmodder`

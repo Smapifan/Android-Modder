@@ -1,0 +1,62 @@
+name: APK Build (Dev/User)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [dev, user]
+    env:
+      DEV_PACKAGE_NAME: com.smapifan.androidmodder.dev
+      USER_PACKAGE_NAME: com.smapifan.androidmodder
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Select build package name
+        id: pkg
+        run: |
+          if [ "${{ matrix.variant }}" = "dev" ]; then
+            echo "package_name=${DEV_PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+            echo "build_channel=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "package_name=${USER_PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+            echo "build_channel=user" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests
+        run: ./gradlew --no-daemon test
+
+      - name: Build distribution zip
+        run: ./gradlew --no-daemon distZip
+
+      - name: Add variant metadata
+        run: |
+          mkdir -p build/variant-metadata
+          cat <<EOF > build/variant-metadata/${{ matrix.variant }}.txt
+          build_channel=${{ steps.pkg.outputs.build_channel }}
+          package_name=${{ steps.pkg.outputs.package_name }}
+          dev_tools_enabled=$([ "${{ matrix.variant }}" = "dev" ] && echo true || echo false)
+          EOF
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-modder-${{ matrix.variant }}
+          path: |
+            build/distributions/*.zip
+            build/variant-metadata/${{ matrix.variant }}.txt

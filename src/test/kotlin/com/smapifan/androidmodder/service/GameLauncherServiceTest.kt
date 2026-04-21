@@ -164,6 +164,36 @@ class GameLauncherServiceTest {
     }
 
     @Test
+    fun `launch auto-applies matching mod files from package workspace`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("launcher-auto-mod-appdir")
+
+        val saveDir = ws
+            .resolve("com.gram.mergedragons")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.gram.mergedragons")
+            .resolve("files")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "CoinCount=100")
+
+        val appDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+        Files.writeString(appDir.resolve("InfiniteCoins.mod"), """
+            {
+              "name": "InfiniteCoins",
+              "gameId": "com.gram.mergedragons",
+              "patches": [
+                { "field": "CoinCount", "operation": "ADD",  "amount": 900 }
+              ]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
+        assertEquals("1000", fields["CoinCount"], "Package-specific mod should be applied")
+    }
+
+    @Test
     fun `launch skips mod files for other games`() {
         val fake = FakeShellExecutor()
         val ws   = Files.createTempDirectory("launcher-mod-filter")
