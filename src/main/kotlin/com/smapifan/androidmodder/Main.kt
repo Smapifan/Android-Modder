@@ -59,14 +59,16 @@ private fun note(text: String) = println("  ${DIM}${text}${RESET}")
 fun main(args: Array<String>) {
     val i18n = I18nService()
 
-    // ── workspace ────────────────────────────────────────────────────────────
-    val workspaceArg = args.firstOrNull() ?: "./workspace"
-    val workspace    = Path.of(workspaceArg)
+    // ── Parse CLI arguments ──────────────────────────────────────────────────
+    // First positional arg = workspace path; flags start with "--"
+    val workspaceArg = args.firstOrNull { !it.startsWith("--") } ?: "./workspace"
+    val cleanMode    = args.contains("--clean") // flag: remove all mods instead of showing status
 
+    val workspace        = Path.of(workspaceArg)
     val workspaceService = ModWorkspaceService()
-    workspaceService.ensureWorkspace(workspace)
+    workspaceService.ensureWorkspace(workspace) // create workspace dir if it doesn't exist yet
 
-    // ── cheats ───────────────────────────────────────────────────────────────
+    // ── Load cheats from bundled JSON (optional file) ────────────────────────
     val cheatsPath = Path.of("src/main/resources/Cheats.json")
     val cheats = if (cheatsPath.exists()) {
         CheatsConfigParser().parse(cheatsPath.readText())
@@ -74,7 +76,7 @@ fun main(args: Array<String>) {
         emptyList()
     }
 
-    // ── app catalog ──────────────────────────────────────────────────────────
+    // ── Load app catalog (optional file) ────────────────────────────────────
     val catalogPath    = Path.of("src/main/resources/AppCatalog.json")
     val catalogService = AppCatalogService()
     val allApps = if (catalogPath.exists()) {
@@ -83,17 +85,21 @@ fun main(args: Array<String>) {
         emptyList()
     }
 
-    val userAge       = 10
+    // Filter catalog to apps appropriate for the current user's age
+    val userAge         = 10
     val ageFilteredApps = catalogService.filterByAge(allApps, userAge)
 
-    // ── mods summary ────────────────────────────────────────────────────────
-    val modLoader = ModLoader()
+    // ── Discover .mod files in the workspace ─────────────────────────────────
+    val modLoader    = ModLoader()
     val detectedMods = workspaceService.listMods(workspace).mapNotNull { path ->
+        // Silently skip files that cannot be parsed (wrong format, corrupt, etc.)
         runCatching { modLoader.load(path) }.getOrNull()
     }
-    val onLaunchMods    = detectedMods.filter { it.triggerMode == TriggerMode.ON_LAUNCH }
-    val onDemandMods    = detectedMods.filter { it.triggerMode == TriggerMode.ON_DEMAND }
-    val onAutosaveMods  = detectedMods.filter { it.triggerMode == TriggerMode.ON_AUTOSAVE }
+
+    // Split detected mods by trigger mode for display / scheduling purposes
+    val onLaunchMods   = detectedMods.filter { it.triggerMode == TriggerMode.ON_LAUNCH }
+    val onDemandMods   = detectedMods.filter { it.triggerMode == TriggerMode.ON_DEMAND }
+    val onAutosaveMods = detectedMods.filter { it.triggerMode == TriggerMode.ON_AUTOSAVE }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Banner
@@ -105,20 +111,43 @@ fun main(args: Array<String>) {
     println("${MAGENTA}${BOLD}  ╚══════════════════════════════════════╝${RESET}")
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Workspace & config summary
+    //  --clean mode: delete all .mod files and exit
+    //
+    //  Because the launcher never patches the APK itself (mods only edit save
+    //  files in the workspace), removing the .mod files is all that is needed
+    //  to get a fully clean game.  The installed APK keeps its original
+    //  Play-Store signature and data directory untouched.
     // ─────────────────────────────────────────────────────────────────────────
-    header("${i18n.get("app.workspace")} & Configuration")
-    row(i18n.get("app.workspace"),            workspace)
-    row(i18n.get("app.cheats.loaded"),         cheats.size)
-    row(i18n.get("app.extensions.detected"),   workspaceService.listExtensions(workspace).size)
-    row(i18n.get("app.mods.detected"),         detectedMods.size)
+    if (cleanMode) {
+        header(i18n.get("mod.clean.header"))
+        val removed = workspaceService.removeAllMods(workspace)
+        if (removed == 0) {
+            // No .mod files were present — workspace is already clean
+            note("${GREEN}✔${RESET}  ${i18n.get("mod.clean.none")}")
+        } else {
+            // Deleted one or more .mod files; game runs unmodified next launch
+            note("${GREEN}✔${RESET}  ${i18n.format("mod.clean.removed", removed)}")
+        }
+        println()
+        return // Exit after cleaning — no need to print the full status report
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Mod breakdown by trigger mode
+    //  Workspace & configuration summary
+    // ─────────────────────────────────────────────────────────────────────────
+    header("${i18n.get("app.workspace")} & Configuration")
+    row(i18n.get("app.workspace"),           workspace)
+    row(i18n.get("app.cheats.loaded"),        cheats.size)
+    row(i18n.get("app.extensions.detected"),  workspaceService.listExtensions(workspace).size)
+    row(i18n.get("app.mods.detected"),        detectedMods.size)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Active mods breakdown (only shown when at least one .mod file exists)
     // ─────────────────────────────────────────────────────────────────────────
     if (detectedMods.isNotEmpty()) {
         header("Active Mods")
 
+        // ON_LAUNCH: patches are applied once, right before the game starts
         if (onLaunchMods.isNotEmpty()) {
             println("  ${GREEN}${BOLD}${i18n.get("overlay.trigger.on_launch")}${RESET}")
             onLaunchMods.forEach { mod ->
@@ -126,17 +155,20 @@ fun main(args: Array<String>) {
             }
         }
 
+        // ON_DEMAND: each mod exposes one or more overlay buttons the user taps
         if (onDemandMods.isNotEmpty()) {
             println()
             println("  ${BLUE}${BOLD}${i18n.get("overlay.trigger.on_demand")}${RESET}")
             onDemandMods.forEach { mod ->
                 bullet("${mod.name}  ${DIM}(${mod.gameId})${RESET}", accent = BLUE)
+                // Show the individual actions (buttons) this mod provides
                 mod.overlayActions.forEach { action ->
                     println("      ${DIM}▸  ${action.label}  →  fields: ${action.patchFields.joinToString()}${RESET}")
                 }
             }
         }
 
+        // ON_AUTOSAVE: patches are re-applied automatically at a fixed interval
         if (onAutosaveMods.isNotEmpty()) {
             println()
             println("  ${YELLOW}${BOLD}${i18n.get("overlay.trigger.on_autosave")}${RESET}")
@@ -147,7 +179,7 @@ fun main(args: Array<String>) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  How it works
+    //  How it works (short explanation for new users)
     // ─────────────────────────────────────────────────────────────────────────
     header("How It Works")
     note(i18n.get("cheat.how.it.works"))
@@ -159,7 +191,7 @@ fun main(args: Array<String>) {
     note("${BLUE}ℹ${RESET}  ${i18n.get("overlay.permission.note")}")
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  App catalog
+    //  App catalog (age-filtered list with Play Store links)
     // ─────────────────────────────────────────────────────────────────────────
     header(i18n.format("app.catalog.title", allApps.size, ageFilteredApps.size, userAge))
     if (ageFilteredApps.isEmpty()) {

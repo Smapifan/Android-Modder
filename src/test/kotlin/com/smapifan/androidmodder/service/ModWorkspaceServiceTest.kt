@@ -193,7 +193,60 @@ class ModWorkspaceServiceTest {
         assertEquals(emptyList(), service.listMods(nonExistent))
     }
 
-    // --- unpackApk --------------------------------------------------------
+    // --- removeAllMods --------------------------------------------------------
+
+    @Test
+    fun `removeAllMods deletes all mod files and returns count`() {
+        val root = Files.createTempDirectory("rm-mods-test")
+        Files.writeString(root.resolve("Alpha.mod"), "mod_a")
+        Files.writeString(root.resolve("Beta.mod"),  "mod_b")
+        Files.writeString(root.resolve("keep.txt"),  "not a mod")
+
+        // Should delete the two .mod files and ignore non-.mod files
+        val removed = service.removeAllMods(root)
+
+        assertEquals(2, removed)
+        // .mod files must be gone
+        assertTrue(!root.resolve("Alpha.mod").toFile().exists(), "Alpha.mod should be deleted")
+        assertTrue(!root.resolve("Beta.mod").toFile().exists(),  "Beta.mod should be deleted")
+        // Other files must be untouched
+        assertTrue(root.resolve("keep.txt").toFile().exists(),   "keep.txt must not be deleted")
+    }
+
+    @Test
+    fun `removeAllMods returns zero when no mod files are present`() {
+        val root = Files.createTempDirectory("rm-mods-empty")
+        Files.writeString(root.resolve("readme.txt"), "nothing here")
+
+        val removed = service.removeAllMods(root)
+
+        assertEquals(0, removed)
+    }
+
+    @Test
+    fun `removeAllMods returns zero for non-existent directory`() {
+        val nonExistent = Path.of("/tmp/does-not-exist-${System.nanoTime()}")
+
+        val removed = service.removeAllMods(nonExistent)
+
+        assertEquals(0, removed)
+    }
+
+    @Test
+    fun `removeAllMods leaves workspace otherwise intact`() {
+        val root = Files.createTempDirectory("rm-mods-intact")
+        Files.writeString(root.resolve("Cheat.mod"),     "cheat")
+        Files.writeString(root.resolve("Game.extension"), "ext")
+        Files.writeString(root.resolve("notes.txt"),      "notes")
+
+        service.removeAllMods(root)
+
+        // Non-.mod files must still exist after the clean
+        assertTrue(root.resolve("Game.extension").toFile().exists())
+        assertTrue(root.resolve("notes.txt").toFile().exists())
+    }
+
+
 
     @Test
     fun `unpacks apk zip safely`() {

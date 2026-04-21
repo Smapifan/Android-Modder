@@ -147,6 +147,33 @@ class ModWorkspaceService {
         }
     }
 
+    /**
+     * Deletes all `*.mod` files from [root] and returns the number of files removed.
+     *
+     * Because mods only modify save files in the workspace (the original APK is
+     * never touched), removing the `.mod` files is enough to restore a completely
+     * clean game state: the next launch through the launcher applies no patches,
+     * the APK signature stays original, and Play-Store updates work normally.
+     *
+     * @param root the workspace root directory that contains the `.mod` files
+     * @return number of `.mod` files that were deleted (0 if none existed)
+     */
+    fun removeAllMods(root: Path): Int {
+        // Nothing to do if the workspace does not exist yet
+        if (!Files.isDirectory(root)) return 0
+
+        var removed = 0
+        Files.list(root).use { paths ->
+            paths
+                .filter { it.isRegularFile() && it.extension == "mod" }
+                .forEach { modFile ->
+                    // Delete each .mod file; count successful deletions
+                    if (Files.deleteIfExists(modFile)) removed++
+                }
+        }
+        return removed
+    }
+
     fun unpackApk(apkPath: Path, destinationRoot: Path): Path {
         require(apkPath.extension.lowercase() == "apk") {
             "Only .apk files are supported, but received extension: ${apkPath.extension.ifBlank { "<none>" }}"

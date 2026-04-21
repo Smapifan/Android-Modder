@@ -411,6 +411,42 @@ class GameLauncherService(
     //  APK-injection: restore original Play-Store APK (zero save loss)
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Clean mods: remove all .mod files so the next launch is unmodified
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Removes all `*.mod` files from [workspace] and returns the number deleted.
+     *
+     * ## Why this is enough to "clean" the game
+     *
+     * This launcher never patches the APK binary when using the save-file strategy.
+     * Mods only modify save files inside the workspace before each launch.
+     * Deleting the `.mod` files means:
+     * - No patches are applied on the next launch.
+     * - The installed APK retains its original Play-Store signature.
+     * - Play-Store updates, Family-Link checks and integrity checks all work normally.
+     *
+     * If [packageName] is provided **and** an [activationService] is configured,
+     * any leftover per-launch token is also cleared as a safety measure (prevents
+     * a stale token from triggering the injected bootstrap unexpectedly).
+     *
+     * @param workspace   workspace root that contains the `.mod` files
+     * @param packageName optional: game package whose activation token should be cleared
+     * @return number of `.mod` files deleted (0 if none were present)
+     */
+    fun cleanMods(workspace: Path, packageName: String? = null): Int {
+        // Remove all .mod files from the workspace root
+        val removed = workspaceService.removeAllMods(workspace)
+
+        // Clear the activation token so no stale injection fires on next launch
+        if (packageName != null) {
+            activationService?.clearToken(packageName)
+        }
+
+        return removed
+    }
+
     /**
      * Restores the original Play-Store APK for [config] **without losing any
      * save data** from the current (modded) session.
