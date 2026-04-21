@@ -148,6 +148,27 @@ class ModWorkspaceService {
     }
 
     /**
+     * Discovers user-provided mod files (`*.mod`) from the game-specific workspace subdirectory.
+     *
+     * With the per-game structure, each game's mods live in
+     * `<workspace>/<appName>/` (files with a `.mod` extension).
+     *
+     * @param root    the workspace root directory
+     * @param appName the game's package name, e.g. `"com.gram.mergedragons"`
+     * @return sorted list of `.mod` file paths for this game
+     */
+    fun listModsForApp(root: Path, appName: String): List<Path> {
+        val appDir = root.resolve(appName)
+        if (!Files.isDirectory(appDir)) return emptyList()
+        Files.list(appDir).use { paths ->
+            return paths
+                .filter { it.isRegularFile() && it.extension == "mod" }
+                .sorted(compareBy { it.name.lowercase() })
+                .toList()
+        }
+    }
+
+    /**
      * Deletes all `*.mod` files from [root] and returns the number of files removed.
      *
      * Because mods only modify save files in the workspace (the original APK is
@@ -168,6 +189,28 @@ class ModWorkspaceService {
                 .filter { it.isRegularFile() && it.extension == "mod" }
                 .forEach { modFile ->
                     // Delete each .mod file; count successful deletions
+                    if (Files.deleteIfExists(modFile)) removed++
+                }
+        }
+        return removed
+    }
+
+    /**
+     * Deletes all `*.mod` files from the game-specific workspace subdirectory.
+     *
+     * @param root    the workspace root directory
+     * @param appName the game's package name, e.g. `"com.gram.mergedragons"`
+     * @return number of `.mod` files that were deleted (0 if none existed)
+     */
+    fun removeModsForApp(root: Path, appName: String): Int {
+        val appDir = root.resolve(appName)
+        if (!Files.isDirectory(appDir)) return 0
+
+        var removed = 0
+        Files.list(appDir).use { paths ->
+            paths
+                .filter { it.isRegularFile() && it.extension == "mod" }
+                .forEach { modFile ->
                     if (Files.deleteIfExists(modFile)) removed++
                 }
         }

@@ -1,0 +1,5 @@
+[
+  { "appName": "com.kiloo.subwaysurf", "field": "coins",       "operation": "ADD", "amount": 10000 },
+  { "appName": "com.kiloo.subwaysurf", "field": "keys",        "operation": "ADD", "amount": 10    },
+  { "appName": "com.kiloo.subwaysurf", "field": "hoverboards", "operation": "SET", "amount": 5     }
+]

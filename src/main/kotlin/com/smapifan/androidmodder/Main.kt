@@ -8,6 +8,10 @@ import com.smapifan.androidmodder.service.ModLoader
 import com.smapifan.androidmodder.service.ModWorkspaceService
 import java.nio.file.Path
 import kotlin.io.path.exists
+import kotlin.io.path.extension
+import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.readText
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -68,10 +72,13 @@ fun main(args: Array<String>) {
     val workspaceService = ModWorkspaceService()
     workspaceService.ensureWorkspace(workspace) // create workspace dir if it doesn't exist yet
 
-    // ── Load cheats from bundled JSON (optional file) ────────────────────────
-    val cheatsPath = Path.of("src/main/resources/Cheats.json")
-    val cheats = if (cheatsPath.exists()) {
-        CheatsConfigParser().parse(cheatsPath.readText())
+    // ── Load cheats from per-game JSON files in cheats/ directory ───────────
+    val cheatsDir = Path.of("src/main/resources/cheats")
+    val parser = CheatsConfigParser()
+    val cheats = if (cheatsDir.isDirectory()) {
+        cheatsDir.listDirectoryEntries("*.json")
+            .filter { it.isRegularFile() }
+            .flatMap { parser.parse(it.readText()) }
     } else {
         emptyList()
     }
@@ -89,11 +96,17 @@ fun main(args: Array<String>) {
     val userAge         = 10
     val ageFilteredApps = catalogService.filterByAge(allApps, userAge)
 
-    // ── Discover .mod files in the workspace ─────────────────────────────────
+    // ── Discover .mod files per game in the workspace ────────────────────────
     val modLoader    = ModLoader()
-    val detectedMods = workspaceService.listMods(workspace).mapNotNull { path ->
-        // Silently skip files that cannot be parsed (wrong format, corrupt, etc.)
-        runCatching { modLoader.load(path) }.getOrNull()
+    val detectedMods = if (workspace.isDirectory()) {
+        workspace.listDirectoryEntries()
+            .filter { it.isDirectory() }
+            .flatMap { gameDir ->
+                workspaceService.listModsForApp(workspace, gameDir.fileName.toString())
+                    .mapNotNull { path -> runCatching { modLoader.load(path) }.getOrNull() }
+            }
+    } else {
+        emptyList()
     }
 
     // Split detected mods by trigger mode for display / scheduling purposes
@@ -120,7 +133,15 @@ fun main(args: Array<String>) {
     // ─────────────────────────────────────────────────────────────────────────
     if (cleanMode) {
         header(i18n.get("mod.clean.header"))
-        val removed = workspaceService.removeAllMods(workspace)
+        val removed = if (workspace.isDirectory()) {
+            workspace.listDirectoryEntries()
+                .filter { it.isDirectory() }
+                .sumOf { gameDir ->
+                    workspaceService.removeModsForApp(workspace, gameDir.fileName.toString())
+                }
+        } else {
+            0
+        }
         if (removed == 0) {
             // No .mod files were present — workspace is already clean
             note("${GREEN}✔${RESET}  ${i18n.get("mod.clean.none")}")

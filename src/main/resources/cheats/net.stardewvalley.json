@@ -1,0 +1,5 @@
+[
+  { "appName": "net.stardewvalley", "field": "money",   "operation": "ADD", "amount": 50000 },
+  { "appName": "net.stardewvalley", "field": "health",  "operation": "SET", "amount": 100   },
+  { "appName": "net.stardewvalley", "field": "stamina", "operation": "SET", "amount": 270   }
+]

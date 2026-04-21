@@ -246,7 +246,80 @@ class ModWorkspaceServiceTest {
         assertTrue(root.resolve("notes.txt").toFile().exists())
     }
 
+    // --- listModsForApp ---------------------------------------------------
 
+    @Test
+    fun `listModsForApp returns mods from game-specific subdirectory`() {
+        val root = Files.createTempDirectory("listmods-app-test")
+        val appDir = root.resolve("com.example.game")
+        appDir.createDirectories()
+        Files.writeString(appDir.resolve("AlphaMod.mod"), "mod_a")
+        Files.writeString(appDir.resolve("BetaMod.mod"),  "mod_b")
+        Files.writeString(appDir.resolve("readme.txt"),   "ignored")
+
+        val mods = service.listModsForApp(root, "com.example.game")
+
+        assertEquals(2, mods.size)
+        assertEquals(listOf("AlphaMod.mod", "BetaMod.mod"), mods.map { it.fileName.toString() })
+    }
+
+    @Test
+    fun `listModsForApp returns empty list when game directory does not exist`() {
+        val root = Files.createTempDirectory("listmods-app-missing")
+        assertEquals(emptyList(), service.listModsForApp(root, "com.nonexistent.game"))
+    }
+
+    @Test
+    fun `listModsForApp does not return mods from other game directories`() {
+        val root = Files.createTempDirectory("listmods-app-isolation")
+        val appA = root.resolve("com.game.a").also { it.createDirectories() }
+        val appB = root.resolve("com.game.b").also { it.createDirectories() }
+        Files.writeString(appA.resolve("ModA.mod"), "mod_a")
+        Files.writeString(appB.resolve("ModB.mod"), "mod_b")
+
+        val modsA = service.listModsForApp(root, "com.game.a")
+        val modsB = service.listModsForApp(root, "com.game.b")
+
+        assertEquals(listOf("ModA.mod"), modsA.map { it.fileName.toString() })
+        assertEquals(listOf("ModB.mod"), modsB.map { it.fileName.toString() })
+    }
+
+    // --- removeModsForApp -------------------------------------------------
+
+    @Test
+    fun `removeModsForApp deletes mods only from the specified game directory`() {
+        val root = Files.createTempDirectory("removemods-app-test")
+        val appDir = root.resolve("com.example.game")
+        appDir.createDirectories()
+        Files.writeString(appDir.resolve("Cheat.mod"), "mod")
+        Files.writeString(appDir.resolve("notes.txt"), "keep")
+
+        val removed = service.removeModsForApp(root, "com.example.game")
+
+        assertEquals(1, removed)
+        assertTrue(!appDir.resolve("Cheat.mod").toFile().exists(), "Cheat.mod should be deleted")
+        assertTrue(appDir.resolve("notes.txt").toFile().exists(),   "notes.txt must not be deleted")
+    }
+
+    @Test
+    fun `removeModsForApp does not touch other games`() {
+        val root = Files.createTempDirectory("removemods-isolation")
+        val appA = root.resolve("com.game.a").also { it.createDirectories() }
+        val appB = root.resolve("com.game.b").also { it.createDirectories() }
+        Files.writeString(appA.resolve("ModA.mod"), "mod_a")
+        Files.writeString(appB.resolve("ModB.mod"), "mod_b")
+
+        service.removeModsForApp(root, "com.game.a")
+
+        assertTrue(!appA.resolve("ModA.mod").toFile().exists(), "com.game.a mod should be removed")
+        assertTrue(appB.resolve("ModB.mod").toFile().exists(),  "com.game.b mod must not be touched")
+    }
+
+    @Test
+    fun `removeModsForApp returns zero for non-existent game directory`() {
+        val root = Files.createTempDirectory("removemods-missing")
+        assertEquals(0, service.removeModsForApp(root, "com.nonexistent.game"))
+    }
 
     @Test
     fun `unpacks apk zip safely`() {
