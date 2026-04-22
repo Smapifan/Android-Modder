@@ -1,6 +1,5 @@
 package com.smapifan.androidmodder.service
 
-import com.smapifan.androidmodder.model.ApkInjectionConfig
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.CheatOperation
 import com.smapifan.androidmodder.model.DataAccessStrategy
@@ -531,175 +530,121 @@ class GameLauncherServiceTest {
         assertEquals(DataAccessStrategy.RUN_AS, cfgExplicitRunAs.effectiveStrategy)
     }
 
-    // ── APK-injection activation token ───────────────────────────────────────
+    // ── APK is NEVER modified (wrapper-only architecture) ────────────────────
 
     @Test
-    fun `launch writes activation token when activationService provided and ON_LAUNCH mods exist`() {
+    fun `launch never issues pm install or pm uninstall`() {
         val fake = FakeShellExecutor()
-        val ws   = Files.createTempDirectory("launcher-token-write")
+        val ws   = Files.createTempDirectory("launcher-no-apk-patch")
 
-        // Drop an ON_LAUNCH mod
-        Files.writeString(ws.resolve("CoinMod.mod"), """
-            {
-              "name": "CoinMod",
-              "gameId": "com.gram.mergedragons",
-              "triggerMode": "ON_LAUNCH",
-              "patches": [{"field":"coins","operation":"ADD","amount":1000}]
-            }
-        """.trimIndent())
-
-        // Capture token-write commands via the same fake shell
-        val activationService = LaunchActivationService(fake, externalStorageRoot = "/sdcard")
-        val service = GameLauncherService(
-            workspaceService  = ModWorkspaceService(),
-            cheatApplier      = CheatApplier(),
-            modLoader         = ModLoader(),
-            shell             = fake,
-            activationService = activationService
-        )
-
-        service.launch(ws, baseConfig())
-
-        // The activation service writes via the shell; .launcher_session must appear
-        assertTrue(
-            fake.commands.any { (cmd, _) ->
-                cmd.contains(LaunchActivationService.TOKEN_FILENAME)
-            },
-            "Activation token must be written when ON_LAUNCH mods are present; commands: ${fake.commands}"
-        )
-    }
-
-    @Test
-    fun `launch does NOT write activation token when no ON_LAUNCH mods exist`() {
-        val fake = FakeShellExecutor()
-        val ws   = Files.createTempDirectory("launcher-token-no-write")
-
-        // Only an ON_DEMAND mod – should NOT trigger token write
-        Files.writeString(ws.resolve("DemandMod.mod"), """
-            {
-              "name": "DemandMod",
-              "gameId": "com.gram.mergedragons",
-              "triggerMode": "ON_DEMAND",
-              "patches": [{"field":"gems","operation":"SET","amount":9999}],
-              "overlayActions": [{"label":"Max","patchFields":["gems"]}]
-            }
-        """.trimIndent())
-
-        val activationService = LaunchActivationService(fake, externalStorageRoot = "/sdcard")
-        val service = GameLauncherService(
-            workspaceService  = ModWorkspaceService(),
-            cheatApplier      = CheatApplier(),
-            modLoader         = ModLoader(),
-            shell             = fake,
-            activationService = activationService
-        )
-
-        service.launch(ws, baseConfig())
-
-        assertFalse(
-            fake.commands.any { (cmd, _) ->
-                cmd.contains("touch") && cmd.contains(LaunchActivationService.TOKEN_FILENAME)
-            },
-            "Token must NOT be written when no ON_LAUNCH mods exist"
-        )
-    }
-
-    @Test
-    fun `launch clears token after game exits`() {
-        val fake = FakeShellExecutor()
-        val ws   = Files.createTempDirectory("launcher-token-clear")
-
-        Files.writeString(ws.resolve("CoinMod.mod"), """
-            {
-              "name": "CoinMod",
-              "gameId": "com.gram.mergedragons",
-              "triggerMode": "ON_LAUNCH",
-              "patches": [{"field":"coins","operation":"ADD","amount":500}]
-            }
-        """.trimIndent())
-
-        val activationService = LaunchActivationService(fake, externalStorageRoot = "/sdcard")
-        val service = GameLauncherService(
-            workspaceService  = ModWorkspaceService(),
-            cheatApplier      = CheatApplier(),
-            modLoader         = ModLoader(),
-            shell             = fake,
-            activationService = activationService
-        )
-
-        service.launch(ws, baseConfig())
-
-        val cmds = fake.commands.map { it.first }
-        val amStartIdx = cmds.indexOfFirst { it.contains("am start") }
-        val clearIdx   = cmds.indexOfLast {
-            it.contains("rm -f") && it.contains(LaunchActivationService.TOKEN_FILENAME)
-        }
-        assertTrue(clearIdx >= 0, "Token must be cleared after game exit; commands: $cmds")
-        assertTrue(amStartIdx < clearIdx, "Token clear must come AFTER am start")
-    }
-
-    @Test
-    fun `launch does not write token when no activationService is configured`() {
-        val fake = FakeShellExecutor()
-        val ws   = Files.createTempDirectory("launcher-no-activation-svc")
-
+        // Drop a mod file to make the session non-trivial
         Files.writeString(ws.resolve("Mod.mod"), """
             {"name":"M","gameId":"com.gram.mergedragons",
              "patches":[{"field":"coins","operation":"ADD","amount":1}]}
         """.trimIndent())
 
-        val service = makeService(shell = fake) // no activationService
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        // The original APK must never be touched; pm install/uninstall must not appear
+        assertFalse(
+            fake.commands.any { (cmd, _) -> cmd.contains("pm install") || cmd.contains("pm uninstall") },
+            "Wrapper-only launcher must never call pm install/uninstall; commands: ${fake.commands}"
+        )
+    }
+
+    @Test
+    fun `launch works for any package name not just curated catalog entries`() {
+        val fake = FakeShellExecutor()
+        val ws   = Files.createTempDirectory("launcher-generic-pkg")
+
+        // Completely unknown package – not in any catalog
+        val unknownPkg = "com.unknown.game.xyz"
+        val saveDir = ws
+            .resolve(unknownPkg)
+            .resolve("internal").resolve("data").resolve("data").resolve(unknownPkg)
+            .resolve("files")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "score=0")
+
+        val cheats = listOf(
+            CheatDefinition(unknownPkg, "score", CheatOperation.SET, 9999L)
+        )
+        val service = makeService(cheats = cheats, shell = fake)
+
+        val result = service.launch(ws, baseConfig(unknownPkg))
+
+        // Launch must succeed and cheat must be applied
+        assertTrue(result.success, "Launch must succeed for any package name")
+        val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
+        assertEquals("9999", fields["score"], "Cheat must be applied to unknown package")
+    }
+
+    // ── container launch (buildLaunchCommand) ────────────────────────────────
+
+    @Test
+    fun `buildLaunchCommand returns plain command when containerId is null`() {
+        val service = makeService()
+        val config  = GameLaunchConfig(
+            packageName   = "com.gram.mergedragons",
+            launchCommand = "am start -n com.gram.mergedragons/.MainActivity"
+        )
+
+        val cmd = service.buildLaunchCommand(config)
+
+        assertEquals("am start -n com.gram.mergedragons/.MainActivity", cmd)
+    }
+
+    @Test
+    fun `buildLaunchCommand injects --user flag when containerId is set`() {
+        val service = makeService()
+        val config  = GameLaunchConfig(
+            packageName   = "com.gram.mergedragons",
+            launchCommand = "am start -n com.gram.mergedragons/.MainActivity",
+            containerId   = 11
+        )
+
+        val cmd = service.buildLaunchCommand(config)
+
+        assertEquals("am start --user 11 -n com.gram.mergedragons/.MainActivity", cmd)
+    }
+
+    @Test
+    fun `launch uses am start --user when containerId is set`() {
+        val fake    = FakeShellExecutor()
+        val ws      = Files.createTempDirectory("container-launch-test")
+        val config  = GameLaunchConfig(
+            packageName     = "com.gram.mergedragons",
+            launchCommand   = "am start -n com.gram.mergedragons/.MainActivity",
+            importAfterExit = false,
+            containerId     = 11
+        )
+        val service = makeService(shell = fake)
+
+        val result = service.launch(ws, config)
+
+        assertTrue(result.success)
+        val launchCmd = fake.commands.firstOrNull { it.first.contains("am start") }
+        assertTrue(launchCmd != null, "Expected an am start command")
+        assertTrue(
+            launchCmd!!.first.contains("--user 11"),
+            "Expected --user 11 in launch command, got: ${launchCmd.first}"
+        )
+    }
+
+    @Test
+    fun `launch does NOT add --user when containerId is null`() {
+        val fake    = FakeShellExecutor()
+        val ws      = Files.createTempDirectory("no-container-launch-test")
+        val service = makeService(shell = fake)
 
         service.launch(ws, baseConfig())
 
+        val launchCmd = fake.commands.firstOrNull { it.first.contains("am start") }
+        assertTrue(launchCmd != null, "Expected an am start command")
         assertFalse(
-            fake.commands.any { (cmd, _) -> cmd.contains(LaunchActivationService.TOKEN_FILENAME) },
-            "No token ops should occur without an activationService"
+            launchCmd!!.first.contains("--user"),
+            "Expected no --user in launch command, got: ${launchCmd.first}"
         )
-    }
-
-    // ── restoreOriginalApk ────────────────────────────────────────────────────
-
-    @Test
-    fun `restoreOriginalApk returns false when apkInjection not configured`() {
-        val service = makeService()
-        val config  = ApkInjectionConfig(
-            packageName      = "com.gram.mergedragons",
-            originalApkPath  = "/sdcard/original.apk",
-            keystorePath     = "/sdcard/my.jks",
-            keystorePassword = "pass",
-            keyAlias         = "key"
-        )
-        assertFalse(service.restoreOriginalApk(config))
-    }
-
-    @Test
-    fun `restoreOriginalApk delegates to apkInjection service`() {
-        val fake       = FakeShellExecutor()
-        val saveBackup = SaveBackupService(fake, externalStorageRoot = "/sdcard")
-        val apkSvc     = ApkInjectionService(fake, saveBackup)
-        val service    = GameLauncherService(
-            workspaceService = ModWorkspaceService(),
-            cheatApplier     = CheatApplier(),
-            modLoader        = ModLoader(),
-            shell            = fake,
-            apkInjection     = apkSvc
-        )
-        val config = ApkInjectionConfig(
-            packageName      = "com.gram.mergedragons",
-            originalApkPath  = "/sdcard/original.apk",
-            keystorePath     = "/sdcard/my.jks",
-            keystorePassword = "pass",
-            keyAlias         = "key"
-        )
-
-        service.restoreOriginalApk(config)
-
-        // Backup (run-as cp) + restore script + pm uninstall + pm install must all fire
-        val cmds = fake.commands.map { it.first }
-        assertTrue(cmds.any { it.contains("run-as") && it.contains("cp -r") }, "Expected backup command; got: $cmds")
-        assertTrue(cmds.any { it.contains("restore_saves.sh") }, "Expected restore script write; got: $cmds")
-        assertTrue(cmds.any { it.contains("pm uninstall") }, "Expected pm uninstall; got: $cmds")
-        assertTrue(cmds.any { it.contains("pm install") && !it.contains("uninstall") }, "Expected pm install; got: $cmds")
     }
 }

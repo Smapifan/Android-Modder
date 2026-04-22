@@ -72,4 +72,42 @@ class AppCatalogServiceTest {
         val filtered = service.filterByAge(entries, Int.MAX_VALUE)
         assertEquals(entries.size, filtered.size)
     }
+
+    @Test
+    fun `fromPackageName creates a generic entry for any unknown package`() {
+        val entry = service.fromPackageName("com.unknown.game.xyz")
+        assertEquals("com.unknown.game.xyz", entry.packageName)
+        assertEquals("com.unknown.game.xyz", entry.name)
+        assertEquals("com.unknown.game.xyz", entry.label)
+        assertEquals("Unknown", entry.category)
+        assertEquals(0, entry.minAgeRating)
+    }
+
+    @Test
+    fun `findOrGeneric returns catalog entry when package is known`() {
+        val entries = service.parse(sampleJson)
+        val entry = service.findOrGeneric(entries, "com.gram.mergedragons")
+        assertEquals("Merge Dragons!", entry.name)
+    }
+
+    @Test
+    fun `findOrGeneric returns generic entry for unknown package`() {
+        val entries = service.parse(sampleJson)
+        val entry = service.findOrGeneric(entries, "com.totally.unknown")
+        assertEquals("com.totally.unknown", entry.packageName)
+        assertEquals("Unknown", entry.category)
+    }
+
+    @Test
+    fun `AppEntry label defaults to name when not set in json`() {
+        val entries = service.parse(sampleJson)
+        // JSON has no "label" field → should default to name
+        assertEquals(entries[0].name, entries[0].label)
+    }
+
+    @Test
+    fun `AppEntry iconPath is null when not set in json`() {
+        val entries = service.parse(sampleJson)
+        assertTrue(entries.all { it.iconPath == null })
+    }
 }

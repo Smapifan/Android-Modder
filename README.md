@@ -2,40 +2,42 @@
 
 Rechtssichere MVP-Grundlage für einen Android-Modding-Workflow. Die App ist die **Hülle** – sie ist Cheat-, Modding- und Launcher-Tool in einem. Mods und Extensions werden von der Community erstellt; das echte Spiel wird **niemals** gepatcht.
 
-## Konzept: file-basiert, keine Mod-API nötig
+## Kernprinzip: Wrapper-Architektur – die APK bleibt unberührt
 
-Cheats und Mods funktionieren **ohne externe Mod-API** und **ohne das Spiel zu verändern**. Alles läuft über die App-Daten im Workspace:
+Android-Modder verändert **niemals** die installierte APK. Es gibt keine Smali-Injektion, kein Repackaging, keinen `pm uninstall` / `pm install`-Zyklus. Die originale Play-Store-Signatur bleibt erhalten.
+
+Cheats und Mods wirken ausschließlich auf **Kopien der Save-Dateien** im lokalen Workspace:
 
 1. **Export** – kopiert App-Daten vom Gerät in den Workspace
 2. **Cheat/Mod anwenden** – ändert Felder in den Save-Dateien (z. B. `coins=500` → `coins=1500`)
-3. **Import** – kopiert die bearbeiteten Daten zurück
+3. **Import** – kopiert die bearbeiteten Daten zurück auf das Gerät
+
+Das Spiel liest beim nächsten Start die (jetzt geänderten) Save-Dateien und verhält sich entsprechend – ohne dass die APK jemals angefasst wurde.
 
 ## Launcher-Zyklus
-
-Android-Modder ist der Launcher. Der Nutzer startet das Spiel nicht direkt, sondern über diese App. **Cheats und Mods werden automatisch angewendet** – kein manuelles Verdrahten nötig:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  1. PRE-LAUNCH                                              │
-│     exportAppData()  → /data/data/<pkg>/  (Root)            │
 │     exportExternalData() → /sdcard/Android/data/<pkg>/      │
-│     ✦ Alle Cheats aus Cheats.json (passend zu pkg) anwenden │
-│     ✦ Alle *.mod-Dateien im Workspace (passend zu pkg) anw. │
+│     ✦ Alle Cheats aus cheats/*.json (passend zu pkg) anw.   │
+│     ✦ Alle ON_LAUNCH *.mod-Dateien im Workspace anwenden    │
 ├─────────────────────────────────────────────────────────────┤
 │  2. GAME LAUNCH                                             │
 │     am start -n <pkg>/<Activity>                            │
-│     Spiel läuft normal in seiner Sandbox, unverändert       │
+│     Spiel läuft normal in seiner Sandbox, APK unverändert   │
 │     Spiel liest die (jetzt geänderten) Save-Dateien         │
 ├─────────────────────────────────────────────────────────────┤
-│  3. POST-EXIT                                               │
-│     importAppData()  → zurück auf das Gerät                 │
+│  2b. OVERLAY SESSION (optional)                             │
+│     ON_DEMAND-Buttons, ON_AUTOSAVE-Polling (overlay HUD)    │
+│     RAM-Cheats über /proc/<pid>/mem (ProcessMemoryService)  │
+├─────────────────────────────────────────────────────────────┤
+│  3. POST-EXIT (importAfterExit = true)                      │
+│     importExternalData() → zurück auf das Gerät             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ```kotlin
-// Cheats aus Cheats.json laden
-val cheats = CheatsConfigParser().parse(File("Cheats.json").readText())
-
 // Launcher erstellen – Cheats automatisch injiziert
 val launcher = GameLauncherService(cheats = cheats)
 
@@ -44,37 +46,40 @@ launcher.launch(
     workspace = Path.of("/sdcard/AndroidModder/workspace"),
     config    = GameLaunchConfig(
         packageName   = "com.gram.mergedragons",
-        launchCommand = "am start -n com.gram.mergedragons/.MainActivity",
-        useRootForData = true
+        launchCommand = "am start -n com.gram.mergedragons/.MainActivity"
     )
 )
-// → CoinCount wird automatisch um 1000 erhöht (aus Cheats.json)
+// → CoinCount wird automatisch um 1000 erhöht (aus cheats/*.json)
 // → *.mod-Dateien im Workspace werden automatisch angewendet
 // → Spiel startet und liest die geänderten Saves
+// → APK ist identisch mit dem Original – keine Signaturveränderung
 ```
+
+## Unterstützte Packages
+
+**Alle Package-Namen** werden unterstützt – es gibt keine Sperrliste. Unbekannte Apps werden generisch behandelt. Der optionale kuratierte Katalog (`AppCatalog.json`) dient nur der UI-Darstellung (Name, Kategorie, Play-Store-Link), nicht als Zugangsbeschränkung.
 
 ## Speicherzugriff: Root vs. External Storage
 
-| Pfad auf dem Gerät | Root nötig? | Methode |
+| Pfad auf dem Gerät | Root nötig? | Strategie |
 |---|---|---|
-| `/data/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
-| `/data/<pkg>/` | ✅ **Ja** | `exportAppData()` / `importAppData()` |
-| `/sdcard/Android/data/<pkg>/` | ❌ **Nein** | `exportExternalData()` / `importExternalData()` |
+| `/data/data/<pkg>/` | ✅ **Ja** | `ROOT` oder `RUN_AS` (debuggable Apps) |
+| `/sdcard/Android/data/<pkg>/` | ❌ **Nein** | `EXTERNAL_STORAGE` (Standard) |
+| Live-Speicher `/proc/<pid>/mem` | ✅ **Ja** | `PROCESS_MEMORY` |
 
 ```
-Gerät (intern, Root)                    Workspace
-────────────────────────────            ────────────────────────────────────────────
-/data/data/<pkg>/          ──────►     <workspace>/<app>/internal/data/data/<pkg>/
-/data/<pkg>/               ──────►     <workspace>/<app>/internal/data/<pkg>/
-
 Gerät (extern, kein Root)
-────────────────────────────
-/sdcard/Android/data/<pkg>/ ─────►     <workspace>/<app>/external/<pkg>/
+──────────────────────────────
+/sdcard/Android/data/<pkg>/  ──►  <workspace>/<pkg>/external/<pkg>/
+
+Gerät (intern, Root)
+──────────────────────────────
+/data/data/<pkg>/            ──►  <workspace>/<pkg>/internal/data/data/<pkg>/
 ```
 
 ## Sample Workspace
 
-Das Repo enthält unter `sample_workspace/` realistische Beispiel-Save-Dateien mit echten Feldnamen:
+Das Repo enthält unter `sample_workspace/` realistische Beispiel-Save-Dateien:
 
 | Spiel | Package | Save-Datei | Root? |
 |---|---|---|---|
@@ -84,7 +89,7 @@ Das Repo enthält unter `sample_workspace/` realistische Beispiel-Save-Dateien m
 | Clash of Clans | `com.supercell.clashofclans` | `files/sc.cfg` (local cache) | ✅ |
 | Stardew Valley | `net.stardewvalley` | `files/saves/Player_*` | ✅ |
 
-> **Hinweis zu Save-Formaten:** Mobile Games nutzen verschiedene Formate – JSON, XML, SQLite, binäre Daten. Der `CheatApplier` unterstützt derzeit das `key=value`-Format (ein Eintrag pro Zeile). Die Sample-Saves in diesem Repo sind in diesem Format gehalten.
+> **Hinweis zu Save-Formaten:** Mobile Games nutzen verschiedene Formate – JSON, XML, SQLite, binäre Daten. Der `CheatApplier` unterstützt derzeit das `key=value`-Format (ein Eintrag pro Zeile).
 
 ## Cheats
 
@@ -96,33 +101,37 @@ Cheats sind Wert-Operationen auf benannten Feldern einer Save-Datei:
 | `SUBTRACT` | coins − 1000 | entfernt 1 000 Coins (min. 0) |
 | `SET`      | gems = 9999  | setzt Gems auf exakt 9 999 |
 
-`Cheats.json` (von der Community erweiterbar):
+`cheats/<package>.json` (von der Community erweiterbar):
 ```json
 [
-  { "appName": "MergeDragons", "field": "coins", "operation": "ADD",      "amount": 1000 },
-  { "appName": "MergeDragons", "field": "coins", "operation": "SUBTRACT", "amount": 1000 },
-  { "appName": "MergeDragons", "field": "gems",  "operation": "SET",      "amount": 9999 }
+  { "appName": "com.gram.mergedragons", "field": "coins", "operation": "ADD", "amount": 1000 },
+  { "appName": "com.gram.mergedragons", "field": "gems",  "operation": "SET", "amount": 9999 }
 ]
 ```
 
+## RAM-Cheats (ProcessMemoryService)
+
+Für Werte, die nie auf Disk geschrieben werden, steht `ProcessMemoryService` bereit:
+
 ```kotlin
-// Cheat anwenden – kein Game-Patching, kein Mod-API nötig
-val newValue = CheatApplier().apply(appWorkspaceDir, cheat)
-// newValue = neue Coins-Anzahl
+// Wert im RAM des laufenden Spiels suchen und patchen
+val svc = ProcessMemoryService()
+val pid = svc.findPid("com.gram.mergedragons")!!
+val result = svc.searchAndPatch(pid, currentValue = 500, newValue = 99999)
+// PatchResult.PATCHED(address) → Wert sofort im Spiel sichtbar
 ```
 
-`CheatApplier` sucht das Feld automatisch rekursiv im Workspace – kein fixer Save-Pfad nötig.
+Voraussetzung: Root oder ptrace-Capability. Die Strategie `PROCESS_MEMORY` im `GameLaunchConfig` aktiviert diesen Pfad automatisch im Launcher.
 
 ## Mods & Extensions – Community-Inhalte
 
-Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien (JSON) für jedes Spiel erstellen – keine API nötig. Sie kommen einfach ins Workspace-Verzeichnis:
+Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien (JSON) für jedes Spiel erstellen. Sie kommen einfach ins Workspace-Verzeichnis:
 
 ```
 <workspace>/
-  MergeDragons.extension    ← Extension-Datei (Community)
   InfiniteCoins.mod         ← Mod-Datei (Community)
   com.gram.mergedragons/
-    data/data/com.gram.mergedragons/   ← exportierte App-Daten
+    external/               ← exportierte externe App-Daten
 ```
 
 ### Mod-Dateiformat (`.mod`)
@@ -130,7 +139,8 @@ Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien
 ```json
 {
   "name": "InfiniteCoins",
-  "gameId": "MergeDragons",
+  "gameId": "com.gram.mergedragons",
+  "triggerMode": "ON_LAUNCH",
   "description": "Adds 10 000 coins and sets gems to 999",
   "patches": [
     { "field": "coins", "operation": "ADD", "amount": 10000 },
@@ -139,20 +149,11 @@ Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien
 }
 ```
 
-```kotlin
-val mod = ModLoader().load(Path.of("InfiniteCoins.mod"))
-ModLoader().applyMod(mod, appWorkspaceDir)
-```
-
-### Extension-Interface
-
-```csharp
-// Mods/SamplePatch.cs – Interface für eigene Patches
-public interface IGamePatch {
-    string GameId { get; }
-    void Apply(string workspaceRoot);
-}
-```
+| `triggerMode` | Wann |
+|---|---|
+| `ON_LAUNCH` | Einmalig vor dem Start (Standard) |
+| `ON_DEMAND` | Bei Overlay-Button-Tap während das Spiel läuft |
+| `ON_AUTOSAVE` | Automatisch alle 30 s während das Spiel läuft |
 
 ## i18n – Mehrsprachigkeit
 
@@ -163,51 +164,22 @@ Die App unterstützt Internationalisierung über Java `ResourceBundle`. Verfügb
 | `messages_de.properties` | Deutsch |
 | `messages_en.properties` | Englisch |
 
-Die Systemsprache wird automatisch erkannt. Fallback ist Englisch.
-
 ```kotlin
 val i18n = I18nService()                   // Systemsprache
 val i18n = I18nService(Locale.ENGLISH)     // erzwungen Englisch
 println(i18n.get("app.title"))             // "Android-Modder"
-println(i18n.format("app.catalog.title", 14, 9, 10))
 ```
-
-Neue Sprachen: einfach `messages_<locale>.properties` in `src/main/resources/` ablegen.
 
 ## App-Katalog
 
-Der kuratierte Katalog (`AppCatalog.json`) enthält altersgerechte Apps aus dem Play Store:
+Der optionale Katalog (`AppCatalog.json`) ist eine informelle Liste bekannter Apps. Er dient der UI-Darstellung (Name, Label, Icon-Pfad, Kategorie, Play-Store-Link) und **schränkt keine Nutzung ein**.
 
-| Kategorie | App | Mindestalter |
-|-----------|-----|-------------|
-| Spiele | Merge Dragons! | 0+ |
-| GApps | YouTube Kids | 0+ |
-| GApps | Google Maps | 0+ |
-| GApps | Google Chrome | 0+ |
-| GApps | Google Drive | 0+ |
-| GApps | Google Fotos | 0+ |
-| GApps | Google Kalender | 0+ |
-| GApps | Gmail | 6+ |
-| GApps | YouTube | 12+ |
-| Spiele | Minecraft | 6+ |
-| Spiele | Subway Surfers | 0+ |
-| Spiele | Clash of Clans | 12+ |
-| Bildung | Duolingo | 0+ |
-| Bildung | Khan Academy Kids | 0+ |
-
-### Wie die Installation funktioniert
-
-`AppCatalogService.playStoreUrl(entry)` liefert einen offiziellen Play-Store-Link:
-
+```kotlin
+val catalogService = AppCatalogService()
+// Bekannte App aus Katalog oder generischen Eintrag erzeugen
+val entry = catalogService.findOrGeneric(allApps, "com.unknown.game")
+// → AppEntry(name="com.unknown.game", label="com.unknown.game", category="Unknown")
 ```
-https://play.google.com/store/apps/details?id=com.gram.mergedragons
-```
-
-Auf Android wird dieser per `Intent` geöffnet – Family Link greift wie gewohnt und kann die Installation genehmigen oder ablehnen. **Kein Schutz wird umgangen.**
-
-## Wichtige Grenzen
-
-Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen (inkl. Family Link), kein unerlaubtes Entschlüsseln geschützter Inhalte und keine Manipulation fremder APKs. Der Workflow ist auf legale Nutzung mit offiziellen Store-Apps und auf benutzerseitige Datenverwaltung ausgelegt.
 
 ## Lokaler Start
 
@@ -221,15 +193,12 @@ Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen (in
 - **USER** (Standard): keine Dev-Tools über CLI
 - **DEV**: zusätzliche CLI-Operationen für Export/Unpack
 
-Build-Channel setzen:
-
 ```bash
 ./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-export-package=com.gram.mergedragons"
 ./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-unpack-apk=/pfad/app.apk --dev-readable-index"
 ```
 
-User-Build blockiert Dev-Operationen automatisch.
+## Wichtige Grenzen
 
-CI-Workflow: `.github/workflows/apk-build-dev-user.yml`
-- Variant `dev` → `com.smapifan.androidmodder.dev`
-- Variant `user` → `com.smapifan.androidmodder`
+Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen, kein APK-Patching und keine Manipulation fremder APKs. Der Workflow ist auf legale Nutzung mit offiziellen Store-Apps und auf benutzerseitige Datenverwaltung ausgelegt.
+
