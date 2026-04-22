@@ -153,7 +153,10 @@ class GameLauncherService(
 
         // ── 2. LAUNCH GAME ───────────────────────────────────────────────────
         // The game starts in its own normal Android sandbox, completely unmodified.
-        val launchResult = shell.execute(config.launchCommand)
+        // When a containerId is set, the launch command is amended with --user <id>
+        // so the game runs inside the isolated Android user (container).
+        val effectiveLaunchCommand = buildLaunchCommand(config)
+        val launchResult = shell.execute(effectiveLaunchCommand)
 
         // ── 2b. OVERLAY SESSION + PROCESS-MEMORY INJECTION ───────────────────
         if (overlayService != null || strategy == DataAccessStrategy.PROCESS_MEMORY) {
@@ -401,4 +404,32 @@ class GameLauncherService(
      */
     fun cleanMods(workspace: Path): Int =
         workspaceService.removeAllMods(workspace)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Container launch command builder
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Builds the effective shell command used to start the game.
+     *
+     * When [GameLaunchConfig.containerId] is `null` the command is the plain
+     * [GameLaunchConfig.launchCommand] as before.
+     *
+     * When [GameLaunchConfig.containerId] is set, `--user <id>` is appended
+     * directly after the `am start` keyword so that Android routes the launch
+     * to the isolated container user:
+     *
+     * ```
+     * "am start -n com.example/.Main"         → base command (no container)
+     * "am start --user 11 -n com.example/.Main" → container user 11
+     * ```
+     *
+     * This is done by a simple string replacement so that callers can continue
+     * to supply a plain `am start …` command in [GameLaunchConfig.launchCommand]
+     * without having to know about the container at command-construction time.
+     */
+    internal fun buildLaunchCommand(config: GameLaunchConfig): String {
+        val id = config.containerId ?: return config.launchCommand
+        return config.launchCommand.replaceFirst("am start", "am start --user $id")
+    }
 }

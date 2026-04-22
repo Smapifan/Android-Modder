@@ -15,6 +15,14 @@ package com.smapifan.androidmodder.model
  *
  * The [dataAccessStrategy] controls *how* step 1 and 3 are performed.
  *
+ * ## Container mode
+ *
+ * When [containerId] is set to a non-null Android user-ID (created via
+ * [com.smapifan.androidmodder.service.ContainerService.createContainer]), the launcher
+ * routes `am start` through `am start --user <containerId>`.  All save data, app data,
+ * and process memory operations are then scoped to that isolated Android user, acting
+ * as a lightweight root container without a full hardware emulator.
+ *
  * @param packageName         the game's package name, e.g. `"com.gram.mergedragons"`
  * @param launchCommand       shell command to start the game,
  *                            e.g. `"am start -n com.gram.mergedragons/.MainActivity"`
@@ -26,6 +34,10 @@ package com.smapifan.androidmodder.model
  * @param externalStorageRoot root of external storage, default `/sdcard`
  * @param importAfterExit     if `true`, modified workspace data is imported back after
  *                            the game process exits
+ * @param containerId         optional Android user-ID of the container to run the game in.
+ *                            When non-null the launcher appends `--user <containerId>` to
+ *                            every `am start` call so the game executes inside the isolated
+ *                            Android user created by [com.smapifan.androidmodder.service.ContainerService].
  */
 data class GameLaunchConfig(
     val packageName: String,
@@ -51,7 +63,21 @@ data class GameLaunchConfig(
 
     val deviceDataRoot: String = "/data",
     val externalStorageRoot: String = "/sdcard",
-    val importAfterExit: Boolean = true
+    val importAfterExit: Boolean = true,
+
+    /**
+     * Optional Android user-ID of the container to launch the game in.
+     *
+     * When `null` (default) the game is launched in the primary user (user 0) as before.
+     * When non-null the launcher appends `--user <containerId>` to the `am start` command,
+     * directing Android to run the game inside the isolated Android user that was created by
+     * [com.smapifan.androidmodder.service.ContainerService.createContainer].
+     *
+     * The container user owns its own `/data/user/<containerId>/` directory tree and
+     * its own external-storage namespace, so the game's save data is fully isolated from
+     * the primary user without any hardware emulation overhead.
+     */
+    val containerId: Int? = null
 ) {
     /**
      * The **effective** strategy after resolving the [useRootForData] legacy flag.

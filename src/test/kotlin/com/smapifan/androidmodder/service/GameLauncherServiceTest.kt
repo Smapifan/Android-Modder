@@ -579,4 +579,72 @@ class GameLauncherServiceTest {
         val fields = CheatApplier().readFields(saveDir.resolve("save.dat"))
         assertEquals("9999", fields["score"], "Cheat must be applied to unknown package")
     }
+
+    // ── container launch (buildLaunchCommand) ────────────────────────────────
+
+    @Test
+    fun `buildLaunchCommand returns plain command when containerId is null`() {
+        val service = makeService()
+        val config  = GameLaunchConfig(
+            packageName   = "com.gram.mergedragons",
+            launchCommand = "am start -n com.gram.mergedragons/.MainActivity"
+        )
+
+        val cmd = service.buildLaunchCommand(config)
+
+        assertEquals("am start -n com.gram.mergedragons/.MainActivity", cmd)
+    }
+
+    @Test
+    fun `buildLaunchCommand injects --user flag when containerId is set`() {
+        val service = makeService()
+        val config  = GameLaunchConfig(
+            packageName   = "com.gram.mergedragons",
+            launchCommand = "am start -n com.gram.mergedragons/.MainActivity",
+            containerId   = 11
+        )
+
+        val cmd = service.buildLaunchCommand(config)
+
+        assertEquals("am start --user 11 -n com.gram.mergedragons/.MainActivity", cmd)
+    }
+
+    @Test
+    fun `launch uses am start --user when containerId is set`() {
+        val fake    = FakeShellExecutor()
+        val ws      = Files.createTempDirectory("container-launch-test")
+        val config  = GameLaunchConfig(
+            packageName     = "com.gram.mergedragons",
+            launchCommand   = "am start -n com.gram.mergedragons/.MainActivity",
+            importAfterExit = false,
+            containerId     = 11
+        )
+        val service = makeService(shell = fake)
+
+        val result = service.launch(ws, config)
+
+        assertTrue(result.success)
+        val launchCmd = fake.commands.firstOrNull { it.first.contains("am start") }
+        assertTrue(launchCmd != null, "Expected an am start command")
+        assertTrue(
+            launchCmd!!.first.contains("--user 11"),
+            "Expected --user 11 in launch command, got: ${launchCmd.first}"
+        )
+    }
+
+    @Test
+    fun `launch does NOT add --user when containerId is null`() {
+        val fake    = FakeShellExecutor()
+        val ws      = Files.createTempDirectory("no-container-launch-test")
+        val service = makeService(shell = fake)
+
+        service.launch(ws, baseConfig())
+
+        val launchCmd = fake.commands.firstOrNull { it.first.contains("am start") }
+        assertTrue(launchCmd != null, "Expected an am start command")
+        assertFalse(
+            launchCmd!!.first.contains("--user"),
+            "Expected no --user in launch command, got: ${launchCmd.first}"
+        )
+    }
 }
