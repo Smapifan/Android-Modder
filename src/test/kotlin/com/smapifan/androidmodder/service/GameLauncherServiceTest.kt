@@ -1,6 +1,5 @@
 package com.smapifan.androidmodder.service
 
-import com.smapifan.androidmodder.model.ApkInjectionConfig
 import com.smapifan.androidmodder.model.CheatDefinition
 import com.smapifan.androidmodder.model.CheatOperation
 import com.smapifan.androidmodder.model.DataAccessStrategy
