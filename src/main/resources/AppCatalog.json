@@ -1,5 +1,11 @@
 [
   {
+    "name": "Google Play Store",
+    "packageName": "com.android.vending",
+    "category": "GApps",
+    "minAgeRating": 0
+  },
+  {
     "name": "Merge Dragons!",
     "packageName": "com.gram.mergedragons",
     "category": "Spiele",
