@@ -133,7 +133,14 @@ class GameLauncherService(
 
         // ── 1c. AUTO-APPLY ON_LAUNCH MODS ────────────────────────────────────
         // ON_DEMAND and ON_AUTOSAVE mods are handled by the overlay session (step 2b).
-        val allActiveMods = workspaceService.listMods(workspace).mapNotNull { modPath ->
+        val appSpecificMods = workspaceService.listModsForApp(workspace, config.packageName)
+        val legacyRootMods = workspaceService.listMods(workspace)
+        val seenNormalizedPaths = linkedSetOf<String>()
+        val allActiveMods = (appSpecificMods + legacyRootMods)
+            .filter { modPath ->
+                seenNormalizedPaths.add(modPath.toAbsolutePath().normalize().toString())
+            }
+            .mapNotNull { modPath ->
             runCatching { modLoader.load(modPath) }.getOrNull()
                 ?.takeIf { it.gameId == config.packageName }
         }

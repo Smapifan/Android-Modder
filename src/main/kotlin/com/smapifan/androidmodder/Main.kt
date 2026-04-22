@@ -6,6 +6,7 @@ import com.smapifan.androidmodder.service.CheatsConfigParser
 import com.smapifan.androidmodder.service.I18nService
 import com.smapifan.androidmodder.service.ModLoader
 import com.smapifan.androidmodder.service.ModWorkspaceService
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.extension
@@ -13,6 +14,8 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.readText
+import kotlin.io.path.relativeTo
+import kotlin.io.path.writeText
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  ANSI colour helpers  (gracefully degrades on terminals without colour support)
@@ -33,6 +36,17 @@ private val YELLOW  = ansi("33")
 private val BLUE    = ansi("34")
 private val MAGENTA = ansi("35")
 private val RED     = ansi("31")
+
+private enum class BuildChannel(val id: String, val packageName: String) {
+    DEV("dev", "com.smapifan.androidmodder.dev"),
+    USER("user", "com.smapifan.androidmodder");
+
+    companion object {
+        fun from(value: String?): BuildChannel = entries.firstOrNull {
+            it.id.equals(value?.trim(), ignoreCase = true)
+        } ?: USER
+    }
+}
 
 // ─── printing helpers ───────────────────────────────────────────────────────
 
@@ -56,6 +70,69 @@ private fun bullet(text: String, indent: Int = 4, accent: String = RESET) =
 /** Prints a dimmed note line. */
 private fun note(text: String) = println("  ${DIM}${text}${RESET}")
 
+private fun argValue(args: Array<String>, key: String): String? =
+    args.firstOrNull { it.startsWith("$key=") }?.substringAfter("=")?.takeIf { it.isNotBlank() }
+
+private fun writeReadableIndex(root: Path): Path {
+    val index = root.resolve("READABLE_INDEX.txt")
+    val lines = buildList {
+        add("Readable file index for: $root")
+        add("")
+        Files.walk(root).use { stream ->
+            stream
+                .filter { Files.isRegularFile(it) }
+                .sorted()
+                .forEach { file ->
+                    val size = runCatching { Files.size(file) }.getOrDefault(0L)
+                    add("${file.relativeTo(root)} (${size} bytes)")
+                }
+        }
+    }
+    index.writeText(lines.joinToString("\n"))
+    return index
+}
+
+private fun runDevToolsIfRequested(
+    args: Array<String>,
+    buildChannel: BuildChannel,
+    workspace: Path,
+    workspaceService: ModWorkspaceService
+): Boolean {
+    val exportPackage = argValue(args, "--dev-export-package")
+    val unpackApk = argValue(args, "--dev-unpack-apk")
+    val makeReadable = args.contains("--dev-readable-index")
+    val hasDevAction = exportPackage != null || unpackApk != null
+    if (!hasDevAction) return false
+
+    if (buildChannel != BuildChannel.DEV) {
+        println("${RED}${BOLD}Dev tools are disabled in USER build.${RESET}")
+        println("${DIM}Use --build-channel=dev to enable export/unpack actions.${RESET}")
+        return true
+    }
+
+    header("Dev Tools")
+    if (exportPackage != null) {
+        val dataRoot = Path.of(argValue(args, "--dev-device-data-root") ?: "/data")
+        val exportedTo = workspaceService.exportAppData(workspace, dataRoot, exportPackage)
+        row("Exported package", exportPackage)
+        row("Device data root", dataRoot)
+        row("Workspace target", exportedTo)
+    }
+
+    if (unpackApk != null) {
+        val unpackDest = Path.of(argValue(args, "--dev-unpack-dest") ?: workspace.resolve("apk-unpacked").toString())
+        val unpackedDir = workspaceService.unpackApk(Path.of(unpackApk), unpackDest)
+        row("Unpacked APK", unpackApk)
+        row("Unpack target", unpackedDir)
+        if (makeReadable) {
+            val index = writeReadableIndex(unpackedDir)
+            row("Readable index", index)
+        }
+    }
+    println()
+    return true
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  Main entry point
 // ═════════════════════════════════════════════════════════════════════════════
@@ -67,10 +144,15 @@ fun main(args: Array<String>) {
     // First positional arg = workspace path; flags start with "--"
     val workspaceArg = args.firstOrNull { !it.startsWith("--") } ?: "./workspace"
     val cleanMode    = args.contains("--clean") // flag: remove all mods instead of showing status
+    val buildChannel = BuildChannel.from(argValue(args, "--build-channel") ?: System.getenv("ANDROID_MODDER_BUILD_CHANNEL"))
 
     val workspace        = Path.of(workspaceArg)
     val workspaceService = ModWorkspaceService()
     workspaceService.ensureWorkspace(workspace) // create workspace dir if it doesn't exist yet
+
+    if (runDevToolsIfRequested(args, buildChannel, workspace, workspaceService)) {
+        return
+    }
 
     // ── Load cheats from per-game JSON files in cheats/ directory ───────────
     val cheatsDir = Path.of("src/main/resources/cheats")
@@ -158,6 +240,8 @@ fun main(args: Array<String>) {
     // ─────────────────────────────────────────────────────────────────────────
     header("${i18n.get("app.workspace")} & Configuration")
     row(i18n.get("app.workspace"),           workspace)
+    row("Build channel",                      buildChannel.id.uppercase())
+    row("Package name",                       buildChannel.packageName)
     row(i18n.get("app.cheats.loaded"),        cheats.size)
     row(i18n.get("app.extensions.detected"),  workspaceService.listExtensions(workspace).size)
     row(i18n.get("app.mods.detected"),        detectedMods.size)
