@@ -1,0 +1,15 @@
+{
+  "name": "IncreaseDragonStarChance",
+  "gameId": "com.gram.mergedragons",
+  "description": "Raises Dragon Star chance from 5% to 50%.",
+  "targetFiles": [
+    "com.gram.mergedragons/DragonRanch.Shared.cs"
+  ],
+  "patches": [
+    {
+      "identifier": "K_CHANCE_OF_DRAGON_STAR",
+      "newValue": "0.5",
+      "expectedOldValue": "0.05"
+    }
+  ]
+}
