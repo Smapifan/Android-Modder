@@ -1,4 +1,4 @@
-name: Build
+name: Android APK Build
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: android-apk-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
+  build-apk:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,23 +29,14 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Run unit tests (Android/JVM auto-detect)
-        run: |
-          if ./gradlew --no-daemon tasks --all | grep -q "testDebugUnitTest"; then
-            ./gradlew --no-daemon testDebugUnitTest
-          else
-            ./gradlew --no-daemon test
-          fi
+      - name: Run unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
 
-      - name: Build artifacts (APK preferred)
-        run: |
-          if ./gradlew --no-daemon tasks --all | grep -q "assembleDebug"; then
-            ./gradlew --no-daemon assembleDebug
-          elif ./gradlew --no-daemon tasks --all | grep -q "assembleRelease"; then
-            ./gradlew --no-daemon assembleRelease
-          else
-            ./gradlew --no-daemon distZip
-          fi
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon assembleRelease
 
       - name: Upload JUnit reports
         if: always()
@@ -53,17 +44,14 @@ jobs:
         with:
           name: junit-reports
           path: |
-            build/test-results/test/*.xml
-            build/reports/tests/test/**
             build/test-results/testDebugUnitTest/*.xml
             build/reports/tests/testDebugUnitTest/**
 
-      - name: Upload build artifacts
+      - name: Upload APK artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: android-modder-apk
           path: |
             build/outputs/apk/debug/*.apk
             build/outputs/apk/release/*.apk
-            build/distributions/*.zip
