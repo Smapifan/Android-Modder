@@ -11,6 +11,21 @@ import kotlin.test.assertTrue
 class CodePatchLoaderTest {
 
     @Test
+    fun `invalid codepatch file is reported but does not crash`() {
+        val ws = Files.createTempDirectory("codepatch-loader-invalid")
+        val gameDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+
+        ws.resolve("broken.codepatch").writeText("{ invalid json")
+
+        val loader = CodePatchLoader()
+        val report = loader.applyForGame(ws, "com.gram.mergedragons", gameDir)
+
+        assertEquals(1, report.configFilesDiscovered)
+        assertEquals(0, report.configFilesLoaded)
+        assertTrue(report.errors.isNotEmpty())
+    }
+
+    @Test
     fun `discovers and applies codepatch file with explicit target file`() {
         val ws = Files.createTempDirectory("codepatch-loader")
         val gameDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
@@ -37,6 +52,8 @@ class CodePatchLoaderTest {
         val loader = CodePatchLoader()
         val report = loader.applyForGame(ws, "com.gram.mergedragons", gameDir)
 
+        assertEquals(1, report.configFilesDiscovered)
+        assertEquals(1, report.configFilesLoaded)
         assertEquals(1, report.filesVisited)
         assertEquals(1, report.filesPatched)
         assertTrue(source.readText().contains("= 0.5"))

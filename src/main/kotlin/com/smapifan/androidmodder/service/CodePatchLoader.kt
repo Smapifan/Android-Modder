@@ -22,6 +22,8 @@ class CodePatchLoader(
     data class ApplyReport(
         val filesVisited: Int,
         val filesPatched: Int,
+        val configFilesDiscovered: Int,
+        val configFilesLoaded: Int,
         val errors: List<String> = emptyList()
     )
 
@@ -37,26 +39,57 @@ class CodePatchLoader(
 
     fun load(file: Path): CodePatchConfig = json.decodeFromString<CodePatchConfig>(file.readText())
 
-    fun loadAll(workspace: Path): List<LoadedCodePatch> =
-        discover(workspace).mapNotNull { path ->
-            runCatching { LoadedCodePatch(path, load(path)) }.getOrNull()
+    private fun loadAllWithErrors(workspace: Path): Pair<List<LoadedCodePatch>, List<String>> {
+        val discovered = discover(workspace)
+        val loaded = mutableListOf<LoadedCodePatch>()
+        val errors = mutableListOf<String>()
+
+        discovered.forEach { path ->
+            runCatching { LoadedCodePatch(path, load(path)) }
+                .onSuccess { loaded += it }
+                .onFailure { errors += "${path}: ${it.message ?: "invalid codepatch file"}" }
         }
+
+        return loaded to errors
+    }
 
     fun applyForGame(workspace: Path, gameId: String, appWorkspace: Path = workspace.resolve(gameId)): ApplyReport {
         var filesVisited = 0
         var filesPatched = 0
         val errors = mutableListOf<String>()
 
-        val configs = loadAll(workspace)
+        val discovered = discover(workspace)
+        val (loaded, loadErrors) = loadAllWithErrors(workspace)
+        errors += loadErrors
+
+        val configs = loaded
             .map { it.config }
             .filter { it.gameId == gameId }
+
+        if (!Files.isDirectory(appWorkspace)) {
+            errors += "App workspace does not exist: $appWorkspace"
+            return ApplyReport(
+                filesVisited = filesVisited,
+                filesPatched = filesPatched,
+                configFilesDiscovered = discovered.size,
+                configFilesLoaded = loaded.size,
+                errors = errors
+            )
+        }
 
         configs.forEach { config ->
             config.patches.forEach { patch ->
                 if (config.targetFiles.isNotEmpty()) {
                     config.targetFiles.forEach { rel ->
                         val target = workspace.resolve(rel).normalize()
-                        if (!target.startsWith(workspace) || !target.isRegularFile()) return@forEach
+                        if (!target.startsWith(workspace)) {
+                            errors += "Blocked path traversal target: $rel"
+                            return@forEach
+                        }
+                        if (!target.isRegularFile()) {
+                            errors += "Target file missing: $target"
+                            return@forEach
+                        }
                         filesVisited++
                         when (val outcome = runCatching { codePatcher.patch(target, patch) }
                             .getOrElse { PatchOutcome.Error(it.message ?: "patch failed") }) {
@@ -81,6 +114,12 @@ class CodePatchLoader(
             }
         }
 
-        return ApplyReport(filesVisited = filesVisited, filesPatched = filesPatched, errors = errors)
+        return ApplyReport(
+            filesVisited = filesVisited,
+            filesPatched = filesPatched,
+            configFilesDiscovered = discovered.size,
+            configFilesLoaded = loaded.size,
+            errors = errors
+        )
     }
 }

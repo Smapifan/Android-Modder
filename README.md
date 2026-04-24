@@ -216,21 +216,27 @@ val entry = catalogService.findOrGeneric(allApps, "com.unknown.game")
 // → AppEntry(name="com.unknown.game", label="com.unknown.game", category="Unknown")
 ```
 
-## Lokaler Start
+## Lokaler Start / APK-Build
 
 ```bash
-./gradlew test
-./gradlew run --args="/pfad/zu/<workspace>"
+# Debug-APK bauen
+./gradlew assembleDebug
+
+# Unit-Tests (Android Local Unit Tests)
+./gradlew testDebugUnitTest
+
+# APK liegt danach unter:
+# build/outputs/apk/debug/app-debug.apk
 ```
 
-## Dev- vs. User-Build
+## Build-Varianten (Android)
 
-- **USER** (Standard): keine Dev-Tools über CLI
-- **DEV**: zusätzliche CLI-Operationen für Export/Unpack
+- **Debug**: für Entwicklung und lokale Tests (`assembleDebug`)
+- **Release**: signierbare Produktions-Variante (`assembleRelease` + eigenes Signing)
 
 ```bash
-./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-export-package=com.gram.mergedragons"
-./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-unpack-apk=/pfad/app.apk --dev-readable-index"
+./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
 ## Wichtige Grenzen

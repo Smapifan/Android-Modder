@@ -106,6 +106,8 @@ private fun runCodePatchIfRequested(args: Array<String>, workspace: Path): Boole
     val report = CodePatchLoader().applyForGame(workspace, packageName)
     header("Code Patch")
     row("Package", packageName)
+    row("Config files discovered", report.configFilesDiscovered)
+    row("Config files loaded", report.configFilesLoaded)
     row("Files visited", report.filesVisited)
     row("Files patched", report.filesPatched)
     if (report.errors.isNotEmpty()) {
