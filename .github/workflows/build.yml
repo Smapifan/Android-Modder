@@ -2,16 +2,22 @@ name: Android APK Build
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
