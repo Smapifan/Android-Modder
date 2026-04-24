@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21 + Gradle cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Run unit tests
+        run: ./gradlew --no-daemon test
+
+      - name: Build APK (fallback to distZip for JVM build)
+        run: |
+          if ./gradlew --no-daemon tasks --all | grep -q "assembleRelease"; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon distZip
+          fi
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-reports
+          path: |
+            build/test-results/test/*.xml
+            build/reports/tests/test/**
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            **/build/outputs/**/*.apk
+            build/distributions/*.zip

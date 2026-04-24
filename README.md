@@ -155,6 +155,41 @@ Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien
 | `ON_DEMAND` | Bei Overlay-Button-Tap während das Spiel läuft |
 | `ON_AUTOSAVE` | Automatisch alle 30 s während das Spiel läuft |
 
+
+## Code-Patches (`*.codepatch`)
+
+Zusätzlich zu Save-`*.mod`-Dateien unterstützt Android-Modder JSON Drop-in-Codepatches. Diese werden vor dem Start automatisch geladen und auf dekompilierte/source-Dateien im Workspace angewendet.
+
+```json
+{
+  "name": "IncreaseDragonStarChance",
+  "gameId": "com.gram.mergedragons",
+  "targetFiles": ["com.gram.mergedragons/DragonRanch.Shared.cs"],
+  "patches": [
+    {
+      "identifier": "K_CHANCE_OF_DRAGON_STAR",
+      "newValue": "0.5",
+      "expectedOldValue": "0.05"
+    }
+  ]
+}
+```
+
+Wenn `targetFiles` leer ist, scannt der Loader standardmäßig den App-Workspace (`<workspace>/<gameId>/`) und nutzt optional `extensions` als Filter.
+
+## CLI-Flags
+
+```bash
+# Codepatches für ein Package ausführen
+./gradlew run --args="/pfad/workspace --patch-code --package=com.gram.mergedragons"
+
+# RAM-Scan für int-Wert
+./gradlew run --args="/pfad/workspace --ram-scan --package=com.gram.mergedragons --value=500"
+
+# RAM-Analyse (Regionen + Multi-Type Treffer)
+./gradlew run --args="/pfad/workspace --ram-analyze --package=com.gram.mergedragons --value=500"
+```
+
 ## i18n – Mehrsprachigkeit
 
 Die App unterstützt Internationalisierung über Java `ResourceBundle`. Verfügbare Sprachen:
