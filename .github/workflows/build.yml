@@ -1,39 +1,51 @@
-name: Android APK Build
+name: Build
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: apk-build-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-apk:
+  test-and-build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17 + Gradle cache
+      - name: Setup JDK 21 + Gradle cache
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Run unit tests (Android/JVM auto-detect)
+        run: |
+          if ./gradlew --no-daemon tasks --all | grep -q "testDebugUnitTest"; then
+            ./gradlew --no-daemon testDebugUnitTest
+          else
+            ./gradlew --no-daemon test
+          fi
 
-      - name: Run unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Build artifacts (APK preferred)
+        run: |
+          if ./gradlew --no-daemon tasks --all | grep -q "assembleDebug"; then
+            ./gradlew --no-daemon assembleDebug
+          elif ./gradlew --no-daemon tasks --all | grep -q "assembleRelease"; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon distZip
+          fi
 
       - name: Upload JUnit reports
         if: always()
@@ -41,14 +53,17 @@ jobs:
         with:
           name: junit-reports
           path: |
+            build/test-results/test/*.xml
+            build/reports/tests/test/**
             build/test-results/testDebugUnitTest/*.xml
             build/reports/tests/testDebugUnitTest/**
 
-      - name: Upload APK artifacts
+      - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-modder-apk
+          name: build-artifacts
           path: |
             build/outputs/apk/debug/*.apk
             build/outputs/apk/release/*.apk
+            build/distributions/*.zip
