@@ -6,6 +6,9 @@ import com.smapifan.androidmodder.service.CheatsConfigParser
 import com.smapifan.androidmodder.service.I18nService
 import com.smapifan.androidmodder.service.ModLoader
 import com.smapifan.androidmodder.service.ModWorkspaceService
+import com.smapifan.androidmodder.service.CodePatchLoader
+import com.smapifan.androidmodder.service.ProcessMemoryService
+import com.smapifan.androidmodder.service.RamAnalyzer
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -92,6 +95,76 @@ private fun writeReadableIndex(root: Path): Path {
     return index
 }
 
+
+private fun runCodePatchIfRequested(args: Array<String>, workspace: Path): Boolean {
+    if (!args.contains("--patch-code")) return false
+    val packageName = argValue(args, "--package")
+    if (packageName.isNullOrBlank()) {
+        println("${RED}${BOLD}Missing --package=<android.package> for --patch-code${RESET}")
+        return true
+    }
+    val report = CodePatchLoader().applyForGame(workspace, packageName)
+    header("Code Patch")
+    row("Package", packageName)
+    row("Config files discovered", report.configFilesDiscovered)
+    row("Config files loaded", report.configFilesLoaded)
+    row("Files visited", report.filesVisited)
+    row("Files patched", report.filesPatched)
+    if (report.errors.isNotEmpty()) {
+        report.errors.take(10).forEach { bullet(it, accent = RED) }
+    }
+    return true
+}
+
+private fun runRamScanIfRequested(args: Array<String>): Boolean {
+    if (!args.contains("--ram-scan")) return false
+    val packageName = argValue(args, "--package")
+    val value = argValue(args, "--value")?.toIntOrNull()
+    if (packageName.isNullOrBlank() || value == null) {
+        println("${RED}${BOLD}Use --ram-scan --package=<android.package> --value=<int>${RESET}")
+        return true
+    }
+    val memory = ProcessMemoryService()
+    val pid = memory.findPid(packageName)
+    header("RAM Scan")
+    row("Package", packageName)
+    if (pid == null) {
+        row("Status", "process not running", RED)
+        return true
+    }
+    val hits = memory.searchInt(pid, value)
+    row("PID", pid)
+    row("Value", value)
+    row("Matches", hits.size)
+    return true
+}
+
+private fun runRamAnalyzeIfRequested(args: Array<String>): Boolean {
+    if (!args.contains("--ram-analyze")) return false
+    val packageName = argValue(args, "--package")
+    val value = argValue(args, "--value")?.toLongOrNull()
+    if (packageName.isNullOrBlank() || value == null) {
+        println("${RED}${BOLD}Use --ram-analyze --package=<android.package> --value=<number>${RESET}")
+        return true
+    }
+    val memory = ProcessMemoryService()
+    val pid = memory.findPid(packageName)
+    header("RAM Analyze")
+    row("Package", packageName)
+    if (pid == null) {
+        row("Status", "process not running", RED)
+        return true
+    }
+    val analyzer = RamAnalyzer(memory)
+    val summary = analyzer.summariseRegions(pid)
+    val hits = analyzer.multiTypeSearch(pid, value)
+    row("PID", pid)
+    row("Regions", summary.totalRegions)
+    row("Total bytes", summary.totalBytes)
+    row("Hit total", hits.total)
+    row("Hits Int/Long/Float/Double", "${hits.asInt.size}/${hits.asLong.size}/${hits.asFloat.size}/${hits.asDouble.size}")
+    return true
+}
 private fun runDevToolsIfRequested(
     args: Array<String>,
     buildChannel: BuildChannel,
@@ -151,6 +224,15 @@ fun main(args: Array<String>) {
     workspaceService.ensureWorkspace(workspace) // create workspace dir if it doesn't exist yet
 
     if (runDevToolsIfRequested(args, buildChannel, workspace, workspaceService)) {
+        return
+    }
+    if (runCodePatchIfRequested(args, workspace)) {
+        return
+    }
+    if (runRamScanIfRequested(args)) {
+        return
+    }
+    if (runRamAnalyzeIfRequested(args)) {
         return
     }
 
