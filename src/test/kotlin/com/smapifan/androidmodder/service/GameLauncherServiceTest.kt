@@ -668,9 +668,22 @@ class GameLauncherServiceTest {
         """.trimIndent())
 
         val service = makeService(shell = fake)
-        service.launch(ws, baseConfig())
+        var checkedPreStart = false
+        service.launch(
+            ws,
+            baseConfig(),
+            preHooks = listOf({
+                checkedPreStart = true
+                val inPreHook = Files.readString(source)
+                assertTrue(
+                    inPreHook.contains("= 0.5"),
+                    "Code patch should already be applied before launch command"
+                )
+            })
+        )
 
         val patched = Files.readString(source)
+        assertTrue(checkedPreStart, "Expected pre-hook verification to run")
         assertTrue(patched.contains("= 0.5"), "Code patch should have been applied before launch")
     }
 
