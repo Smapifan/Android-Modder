@@ -6,6 +6,7 @@
   "patches": [
     {
       "identifier": "STARTING_COINS",
+      "expectedOldValue": "500",
       "newValue": "999999"
     }
   ]
