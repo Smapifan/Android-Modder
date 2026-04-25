@@ -647,4 +647,31 @@ class GameLauncherServiceTest {
             "Expected no --user in launch command, got: ${launchCmd.first}"
         )
     }
+
+
+    @Test
+    fun `launch auto-applies codepatch files before start`() {
+        val fake = FakeShellExecutor()
+        val ws = Files.createTempDirectory("launcher-codepatch")
+
+        val appDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+        val source = appDir.resolve("DragonRanch.Shared.cs")
+        Files.writeString(source, "private const float K_CHANCE_OF_DRAGON_STAR = 0.05;")
+
+        Files.writeString(ws.resolve("dragonstar.codepatch"), """
+            {
+              "name": "IncreaseDragonStarChance",
+              "gameId": "com.gram.mergedragons",
+              "targetFiles": ["com.gram.mergedragons/DragonRanch.Shared.cs"],
+              "patches": [{ "identifier": "K_CHANCE_OF_DRAGON_STAR", "newValue": "0.5" }]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        val patched = Files.readString(source)
+        assertTrue(patched.contains("= 0.5"), "Code patch should have been applied before launch")
+    }
+
 }
