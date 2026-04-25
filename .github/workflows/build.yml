@@ -33,13 +33,8 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Install Android SDK components
-        run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+      - name: Install Android SDK components (with retries/fallbacks)
+        run: bash ./.github/scripts/ci-setup-android.sh
 
       - name: Verify active Java version
         run: |
