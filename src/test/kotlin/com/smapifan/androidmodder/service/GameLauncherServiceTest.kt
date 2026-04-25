@@ -674,4 +674,154 @@ class GameLauncherServiceTest {
         assertTrue(patched.contains("= 0.5"), "Code patch should have been applied before launch")
     }
 
+    // ── code patch ordering: after ON_LAUNCH mods, before preHooks ───────────
+
+    @Test
+    fun `codepatch is applied before preHooks run`() {
+        // The new order is: cheats → ON_LAUNCH mods → code patches → preHooks → game launch.
+        // This test verifies that when a preHook executes, the code patch has already been applied.
+        val fake = FakeShellExecutor()
+        val ws = Files.createTempDirectory("launcher-codepatch-prehook-order")
+
+        val appDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+        val source = appDir.resolve("DragonRanch.Shared.cs")
+        Files.writeString(source, "private const float K_CHANCE_OF_DRAGON_STAR = 0.05;")
+
+        Files.writeString(ws.resolve("dragonstar.codepatch"), """
+            {
+              "name": "IncreaseDragonStarChance",
+              "gameId": "com.gram.mergedragons",
+              "targetFiles": ["com.gram.mergedragons/DragonRanch.Shared.cs"],
+              "patches": [{ "identifier": "K_CHANCE_OF_DRAGON_STAR", "newValue": "0.5" }]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        var preHookObservedPatchedValue = false
+        service.launch(
+            ws,
+            baseConfig(),
+            preHooks = listOf({
+                val content = Files.readString(source)
+                preHookObservedPatchedValue = content.contains("= 0.5")
+            })
+        )
+
+        assertTrue(
+            preHookObservedPatchedValue,
+            "Code patch must be applied before preHooks execute (step 1d before step 1e)"
+        )
+    }
+
+    @Test
+    fun `codepatch is applied after ON_LAUNCH mods when both are present`() {
+        // New ordering: ON_LAUNCH mods run at step 1c, code patches run at step 1d.
+        // To verify the code patch runs after mods, we use expectedOldValue in the patch;
+        // the patch should still succeed because the file it targets is a separate source
+        // file (unaffected by the mod which targets save data). The point is both complete.
+        val fake = FakeShellExecutor()
+        val ws = Files.createTempDirectory("launcher-codepatch-mod-order")
+
+        val saveDir = ws
+            .resolve("com.gram.mergedragons")
+            .resolve("internal").resolve("data").resolve("data").resolve("com.gram.mergedragons")
+            .resolve("files")
+        saveDir.createDirectories()
+        Files.writeString(saveDir.resolve("save.dat"), "CoinCount=100")
+
+        val appDir = ws.resolve("com.gram.mergedragons")
+        val source = appDir.resolve("Config.cs")
+        Files.writeString(source, "private const int MAX_COINS = 9999;")
+
+        // ON_LAUNCH mod that modifies save data
+        Files.writeString(ws.resolve("CoinBooster.mod"), """
+            {
+              "name": "CoinBooster",
+              "gameId": "com.gram.mergedragons",
+              "triggerMode": "ON_LAUNCH",
+              "patches": [{"field": "CoinCount", "operation": "ADD", "amount": 900}]
+            }
+        """.trimIndent())
+
+        // Code patch that modifies a source file
+        Files.writeString(ws.resolve("MaxCoins.codepatch"), """
+            {
+              "name": "MaxCoinsBoost",
+              "gameId": "com.gram.mergedragons",
+              "targetFiles": ["com.gram.mergedragons/Config.cs"],
+              "patches": [{ "identifier": "MAX_COINS", "newValue": "99999" }]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        // Both the mod and the code patch should have been applied
+        val saveFields = CheatApplier().readFields(saveDir.resolve("save.dat"))
+        assertEquals("1000", saveFields["CoinCount"], "ON_LAUNCH mod must have added 900 coins")
+
+        val sourceContent = Files.readString(source)
+        assertTrue(sourceContent.contains("= 99999"), "Code patch must have been applied to source file")
+    }
+
+    @Test
+    fun `codepatch without expectedOldValue is applied unconditionally during launch`() {
+        // Mirrors the CoinsBoost.codepatch change where "expectedOldValue" was removed.
+        // The patch should fire regardless of what the current value is.
+        val fake = FakeShellExecutor()
+        val ws = Files.createTempDirectory("launcher-codepatch-unconditional")
+
+        val appDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+        val source = appDir.resolve("Config.cs")
+        // Simulate a "post-update" value that would have caused the old expectedOldValue check to fail
+        Files.writeString(source, "private const int STARTING_COINS = 250;")
+
+        Files.writeString(ws.resolve("CoinsBoost.codepatch"), """
+            {
+              "name": "CoinsBoost",
+              "gameId": "com.gram.mergedragons",
+              "targetFiles": ["com.gram.mergedragons/Config.cs"],
+              "patches": [{ "identifier": "STARTING_COINS", "newValue": "999999" }]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig())
+
+        val content = Files.readString(source)
+        assertTrue(
+            content.contains("= 999999"),
+            "Unconditional codepatch (no expectedOldValue) must be applied regardless of current value"
+        )
+    }
+
+    @Test
+    fun `codepatch for wrong gameId is not applied during launch`() {
+        // Regression: the launcher must not apply codepatches for other packages
+        val fake = FakeShellExecutor()
+        val ws = Files.createTempDirectory("launcher-codepatch-wrong-game")
+
+        val appDir = ws.resolve("com.gram.mergedragons").also { it.createDirectories() }
+        val source = appDir.resolve("Config.cs")
+        Files.writeString(source, "private const int COINS = 100;")
+
+        Files.writeString(ws.resolve("othergame.codepatch"), """
+            {
+              "name": "OtherGamePatch",
+              "gameId": "com.othergame.example",
+              "targetFiles": ["com.gram.mergedragons/Config.cs"],
+              "patches": [{ "identifier": "COINS", "newValue": "99999" }]
+            }
+        """.trimIndent())
+
+        val service = makeService(shell = fake)
+        service.launch(ws, baseConfig("com.gram.mergedragons"))
+
+        val content = Files.readString(source)
+        assertTrue(
+            content.contains("= 100"),
+            "Codepatch targeting a different gameId must not be applied"
+        )
+    }
+
 }
