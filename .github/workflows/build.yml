@@ -38,21 +38,10 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
 
-      - name: Force Java 17 for Gradle invocations
-        run: |
-          if [[ -n "${{ steps.setup_java.outputs.path }}" ]]; then
-            echo "JAVA_HOME=${{ steps.setup_java.outputs.path }}" >> "$GITHUB_ENV"
-            echo "${{ steps.setup_java.outputs.path }}/bin" >> "$GITHUB_PATH"
-          elif [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
-            echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
-            echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
-          fi
-          echo "setup-java path output: ${{ steps.setup_java.outputs.path }}"
-          echo "Effective JAVA_HOME after override: ${JAVA_HOME_17_X64:-$JAVA_HOME}"
-          java -version
-
-      - name: Run stable build pipeline
-        run: bash ./.github/scripts/ci-build.sh
+      - name: Run unified CI build script
+        env:
+          SETUP_JAVA_PATH: ${{ steps.setup_java.outputs.path }}
+        run: bash ./.github/scripts/ci.sh
 
       - name: Detect report/artifact files
         id: detect
