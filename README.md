@@ -273,3 +273,25 @@ Damit werden temporäre Gradle-/Netz-Fehler in CI robuster abgefangen. Zusätzli
 
 Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen, kein APK-Patching und keine Manipulation fremder APKs. Der Workflow ist auf legale Nutzung mit offiziellen Store-Apps und auf benutzerseitige Datenverwaltung ausgelegt.
 
+
+## Merge-Konflikte minimieren (sehr wichtig)
+
+Wenn auf unterschiedlichen Systemen (Windows/Linux/macOS) gearbeitet wird, entstehen sonst oft
+"alle Dateien geändert"-Diffs durch unterschiedliche Zeilenenden. Dieses Repo nutzt daher eine
+`.gitattributes`-Datei mit festen Regeln (`LF` für Textdateien, `CRLF` nur für `*.bat`).
+
+Empfohlener Ablauf, damit **keine Merge-Commits** nötig sind:
+
+```bash
+git fetch origin
+git rebase origin/main
+```
+
+Bei Konflikten direkt auflösen und dann:
+
+```bash
+git add <dateien>
+git rebase --continue
+```
+
+So bleibt die Historie linear und PRs werden deutlich konfliktärmer.
