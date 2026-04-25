@@ -119,7 +119,12 @@ class GameLauncherService(
             .filter { it.appName == config.packageName }
             .forEach { cheat -> runCatching { cheatApplier.apply(appDir, cheat) } }
 
-        // ── 1c. AUTO-APPLY ON_LAUNCH MODS ────────────────────────────────────
+        // ── 1c. AUTO-APPLY CODE PATCHES (.codepatch drop-ins) ────────────────
+        // Do this before mod-triggered IMPORT sync so patched workspace data
+        // is what gets pushed to the device.
+        runCatching { codePatchLoader.applyForGame(workspace, config.packageName, appDir) }
+
+        // ── 1d. AUTO-APPLY ON_LAUNCH MODS ────────────────────────────────────
         // Collect mod files from both the workspace root and the app-specific
         // subdirectory, de-duplicate, and apply only ON_LAUNCH mods now.
         // ON_DEMAND and ON_AUTOSAVE mods are handled by the overlay session (step 2b).
@@ -149,10 +154,7 @@ class GameLauncherService(
                     }
             }
 
-        // ── 1d. AUTO-APPLY CODE PATCHES (.codepatch drop-ins) ────────────────
-        runCatching { codePatchLoader.applyForGame(workspace, config.packageName, appDir) }
-
-        // ── 1e. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
+        // ── 1d. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
         preHooks.forEach { it() }
 
         // ── 2. LAUNCH GAME ───────────────────────────────────────────────────
