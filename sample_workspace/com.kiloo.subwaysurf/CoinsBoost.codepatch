@@ -1,0 +1,12 @@
+{
+  "name": "CoinsBoost",
+  "gameId": "com.kiloo.subwaysurf",
+  "description": "Example for scanning all .smali/.cs files below app workspace.",
+  "extensions": ["smali", "cs"],
+  "patches": [
+    {
+      "identifier": "STARTING_COINS",
+      "newValue": "999999"
+    }
+  ]
+}

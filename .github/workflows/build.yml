@@ -1,0 +1,87 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup JDK 17 + Gradle cache
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Ensure scripts are executable
+        run: chmod +x ./gradlew .github/scripts/*.sh
+
+      - name: Run unit tests (stable wrapper script)
+        run: ./.github/scripts/ci-run-tests.sh
+
+      - name: Build artifacts (stable wrapper script)
+        run: ./.github/scripts/ci-build-artifacts.sh
+
+      - name: Detect report/artifact files
+        id: detect
+        if: always()
+        run: |
+          shopt -s nullglob globstar
+          junit=(build/test-results/test/*.xml build/test-results/testDebugUnitTest/*.xml)
+          artifacts=(**/build/outputs/**/*.apk build/distributions/*.zip)
+          if (( ${#junit[@]} > 0 )); then
+            echo "has_junit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_junit=false" >> "$GITHUB_OUTPUT"
+          fi
+          if (( ${#artifacts[@]} > 0 )); then
+            echo "has_artifacts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_artifacts=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload JUnit reports
+        if: always() && steps.detect.outputs.has_junit == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: junit-reports
+          path: |
+            build/test-results/test/*.xml
+            build/reports/tests/test/**
+            build/test-results/testDebugUnitTest/*.xml
+            build/reports/tests/testDebugUnitTest/**
+
+      - name: Upload build artifacts
+        if: always() && steps.detect.outputs.has_artifacts == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-artifacts
+          path: |
+            **/build/outputs/**/*.apk
+            build/distributions/*.zip
