@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup JDK 17 + Gradle cache
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Ensure scripts are executable
+        run: chmod +x ./gradlew .github/scripts/*.sh
+
+      - name: Run unit tests (stable wrapper script)
+        run: ./.github/scripts/ci-run-tests.sh
+
+      - name: Build artifacts (stable wrapper script)
+        run: ./.github/scripts/ci-build-artifacts.sh
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: junit-reports
+          if-no-files-found: warn
+          path: |
+            build/test-results/test/*.xml
+            build/reports/tests/test/**
+            build/test-results/testDebugUnitTest/*.xml
+            build/reports/tests/testDebugUnitTest/**
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-artifacts
+          if-no-files-found: warn
+          path: |
+            **/build/outputs/**/*.apk
+            build/distributions/*.zip

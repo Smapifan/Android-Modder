@@ -155,6 +155,41 @@ Die App liefert **keine** Mods oder Extensions. Jeder kann eigene `.mod`-Dateien
 | `ON_DEMAND` | Bei Overlay-Button-Tap während das Spiel läuft |
 | `ON_AUTOSAVE` | Automatisch alle 30 s während das Spiel läuft |
 
+
+## Code-Patches (`*.codepatch`)
+
+Zusätzlich zu Save-`*.mod`-Dateien unterstützt Android-Modder JSON Drop-in-Codepatches. Diese werden vor dem Start automatisch geladen und auf dekompilierte/source-Dateien im Workspace angewendet.
+
+```json
+{
+  "name": "IncreaseDragonStarChance",
+  "gameId": "com.gram.mergedragons",
+  "targetFiles": ["com.gram.mergedragons/DragonRanch.Shared.cs"],
+  "patches": [
+    {
+      "identifier": "K_CHANCE_OF_DRAGON_STAR",
+      "newValue": "0.5",
+      "expectedOldValue": "0.05"
+    }
+  ]
+}
+```
+
+Wenn `targetFiles` leer ist, scannt der Loader standardmäßig den App-Workspace (`<workspace>/<gameId>/`) und nutzt optional `extensions` als Filter.
+
+## CLI-Flags
+
+```bash
+# Codepatches für ein Package ausführen
+./gradlew run --args="/pfad/workspace --patch-code --package=com.gram.mergedragons"
+
+# RAM-Scan für int-Wert
+./gradlew run --args="/pfad/workspace --ram-scan --package=com.gram.mergedragons --value=500"
+
+# RAM-Analyse (Regionen + Multi-Type Treffer)
+./gradlew run --args="/pfad/workspace --ram-analyze --package=com.gram.mergedragons --value=500"
+```
+
 ## i18n – Mehrsprachigkeit
 
 Die App unterstützt Internationalisierung über Java `ResourceBundle`. Verfügbare Sprachen:
@@ -181,22 +216,58 @@ val entry = catalogService.findOrGeneric(allApps, "com.unknown.game")
 // → AppEntry(name="com.unknown.game", label="com.unknown.game", category="Unknown")
 ```
 
-## Lokaler Start
+## Lokaler Start / APK-Build
 
 ```bash
-./gradlew test
-./gradlew run --args="/pfad/zu/<workspace>"
+# Debug-APK bauen
+./gradlew assembleDebug
+
+# Unit-Tests (Android Local Unit Tests)
+./gradlew testDebugUnitTest
+
+# APK liegt danach unter:
+# build/outputs/apk/debug/app-debug.apk
 ```
 
-## Dev- vs. User-Build
+## Build-Varianten (Android)
 
-- **USER** (Standard): keine Dev-Tools über CLI
-- **DEV**: zusätzliche CLI-Operationen für Export/Unpack
+- **Debug**: für Entwicklung und lokale Tests (`assembleDebug`)
+- **Release**: signierbare Produktions-Variante (`assembleRelease` + eigenes Signing)
 
 ```bash
-./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-export-package=com.gram.mergedragons"
-./gradlew run --args="/pfad/zu/workspace --build-channel=dev --dev-unpack-apk=/pfad/app.apk --dev-readable-index"
+./gradlew assembleDebug
+./gradlew assembleRelease
 ```
+
+
+## Sichere Branchnamen (wichtig für GitHub/Codex)
+
+Wenn ein automatisch erzeugter Branch-Name zu lang ist oder Sonderzeichen wie `%2C` enthält,
+kann das bei manchen Tools/Integrationen Probleme machen.
+
+Nutze dafür den Helper:
+
+```bash
+./scripts/make-safe-branch-name.sh "Add .codepatch support, Android app build"
+# -> codex/add-codepatch-support-android-app-build
+```
+
+Dann den Branch damit anlegen:
+
+```bash
+git checkout -b "$(./scripts/make-safe-branch-name.sh "<Titel>")"
+```
+
+
+## CI-Stabilität (GitHub Actions)
+
+Der Workflow nutzt stabile Wrapper-Skripte unter `.github/scripts/`:
+
+- `.github/scripts/ci-run-tests.sh` – erkennt automatisch `testDebugUnitTest` oder `test`
+- `.github/scripts/ci-build-artifacts.sh` – baut bevorzugt APK (`assembleDebug`) mit Fallback
+- `.github/scripts/gradle-retry.sh` – führt Gradle-Befehle mit Retry/Backoff aus
+
+Damit werden temporäre Gradle-/Netz-Fehler in CI robuster abgefangen.
 
 ## Wichtige Grenzen
 
