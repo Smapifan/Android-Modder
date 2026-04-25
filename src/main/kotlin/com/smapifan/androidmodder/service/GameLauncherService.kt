@@ -154,7 +154,7 @@ class GameLauncherService(
                     }
             }
 
-        // ── 1e. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
+        // ── 1d. OPTIONAL EXTRA PRE-HOOKS ────────────────────────────────────
         preHooks.forEach { it() }
 
         // ── 2. LAUNCH GAME ───────────────────────────────────────────────────

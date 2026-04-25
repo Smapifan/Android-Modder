@@ -5,8 +5,8 @@ TASK_FILE=".github_tasks.txt"
 trap 'rm -f "$TASK_FILE"' EXIT
 
 # Use -q for cleaner output; fallback without -q for Gradle setups that hide tasks with quiet output.
-if ! ./gradlew --no-daemon -q tasks --all > "$TASK_FILE" 2>/dev/null; then
-  ./gradlew --no-daemon tasks --all > "$TASK_FILE"
+if ! ./.github/scripts/gradle-retry.sh -q tasks --all > "$TASK_FILE" 2>/dev/null; then
+  ./.github/scripts/gradle-retry.sh tasks --all > "$TASK_FILE"
 fi
 
 if grep -q "testDebugUnitTest" "$TASK_FILE"; then

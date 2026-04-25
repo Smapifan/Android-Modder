@@ -82,29 +82,20 @@ class CodePatchLoader(
                 if (config.targetFiles.isNotEmpty()) {
                     config.targetFiles.forEach { rel ->
                         val target = workspace.resolve(rel).normalize()
-                        val appRootReal = runCatching { appWorkspace.toRealPath() }.getOrElse {
-                            errors += "App workspace does not exist: $appWorkspace"
-                            return@forEach
-                        }
-                        val targetReal = runCatching { target.toRealPath() }.getOrElse {
-                            errors += "Target file missing: $target"
-                            return@forEach
-                        }
-                        if (!targetReal.startsWith(appRootReal)) {
+                        if (!target.startsWith(workspace)) {
                             errors += "Blocked path traversal target: $rel"
                             return@forEach
                         }
-                        if (!targetReal.isRegularFile()) {
-                            errors += "Target file missing: $targetReal"
+                        if (!target.isRegularFile()) {
+                            errors += "Target file missing: $target"
                             return@forEach
                         }
                         filesVisited++
-                        when (val outcome = runCatching { codePatcher.patch(targetReal, patch) }
+                        when (val outcome = runCatching { codePatcher.patch(target, patch) }
                             .getOrElse { PatchOutcome.Error(it.message ?: "patch failed") }) {
                             is PatchOutcome.Patched -> filesPatched++
-                            is PatchOutcome.Error -> errors += "${targetReal}: ${outcome.message}"
-                            is PatchOutcome.NotFound -> errors += "${targetReal}: ${outcome.message}"
-                            is PatchOutcome.ValueMismatch -> errors += "${targetReal}: ${outcome.message}"
+                            is PatchOutcome.Error -> errors += "${target}: ${outcome.message}"
+                            else -> Unit
                         }
                     }
                 } else {
@@ -117,12 +108,7 @@ class CodePatchLoader(
                     filesVisited += outcomes.size
                     filesPatched += outcomes.values.count { it is PatchOutcome.Patched }
                     outcomes.forEach { (path, outcome) ->
-                        when (outcome) {
-                            is PatchOutcome.Error -> errors += "$path: ${outcome.message}"
-                            is PatchOutcome.NotFound -> errors += "${config.name}/${patch.identifier} at $path: ${outcome.message}"
-                            is PatchOutcome.ValueMismatch -> errors += "${config.name}/${patch.identifier} at $path: ${outcome.message}"
-                            is PatchOutcome.Patched -> Unit
-                        }
+                        if (outcome is PatchOutcome.Error) errors += "$path: ${outcome.message}"
                     }
                 }
             }
