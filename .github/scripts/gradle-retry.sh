@@ -6,6 +6,49 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+ensure_java17() {
+  local current_version current_major
+  current_version="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+  current_major="${current_version%%.*}"
+
+  if [[ "$current_major" == "17" ]]; then
+    return 0
+  fi
+
+  local candidate=""
+  local -a candidates=(
+    "${JAVA_HOME_17_X64:-}"
+    "${JAVA_HOME_17:-}"
+    "${JAVA17_HOME:-}"
+    "${JDK17_HOME:-}"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
+      export JAVA_HOME="$candidate"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      echo "[gradle-retry] Switched to Java 17 at JAVA_HOME=$JAVA_HOME" >&2
+      java -version >&2
+      return 0
+    fi
+  done
+
+  if [[ -d "/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk" ]]; then
+    candidate="$(find /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk -maxdepth 3 -type f -path '*/17*/x64/bin/java' 2>/dev/null | head -n 1 | xargs -r dirname | xargs -r dirname)"
+    if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
+      export JAVA_HOME="$candidate"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      echo "[gradle-retry] Switched to discovered Java 17 at JAVA_HOME=$JAVA_HOME" >&2
+      java -version >&2
+      return 0
+    fi
+  fi
+
+  echo "[gradle-retry] Warning: Java ${current_version:-unknown} detected and no Java 17 installation was found in known locations." >&2
+}
+
+ensure_java17
+
 max_attempts="${MAX_ATTEMPTS:-3}"
 attempt=1
 
