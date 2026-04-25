@@ -45,6 +45,15 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
 
+      - name: Force Java 17 for Gradle invocations
+        run: |
+          if [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
+            echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+            echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          fi
+          echo "Effective JAVA_HOME after override: ${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          java -version
+
       - name: Ensure scripts are executable
         run: chmod +x ./gradlew .github/scripts/*.sh
 
