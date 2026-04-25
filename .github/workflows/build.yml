@@ -21,15 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup JDK 17 + Gradle cache
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup JDK 17 + Gradle cache (after Android setup)
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
           cache: gradle
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK components
         run: |
@@ -38,6 +38,11 @@ jobs:
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
+
+      - name: Verify active Java version
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
 
       - name: Ensure scripts are executable
         run: chmod +x ./gradlew .github/scripts/*.sh
