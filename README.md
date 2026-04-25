@@ -295,3 +295,13 @@ git rebase --continue
 ```
 
 So bleibt die Historie linear und PRs werden deutlich konfliktärmer.
+
+## PR-Erstellung: Fallback wenn Tool "nicht unterstützt" meldet
+
+Wenn ein Tool meldet, dass ein PR "nicht unterstützt" ist (z. B. weil der Branch/PR nicht im erwarteten Flow erzeugt wurde), kannst du den PR trotzdem normal über GitHub erstellen:
+
+1. Branch pushen
+2. **Compare & pull request** klicken
+3. Die Vorlage aus `.github/pull_request_template.md` verwenden
+
+So bist du nicht vom Tool-Status blockiert und kannst immer einen PR aufmachen.

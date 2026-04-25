@@ -10,8 +10,8 @@ max_attempts="${MAX_ATTEMPTS:-3}"
 attempt=1
 
 while (( attempt <= max_attempts )); do
-  echo "[gradle-retry] Attempt ${attempt}/${max_attempts}: ./gradlew --no-daemon --stacktrace $*" >&2
-  if ./gradlew --no-daemon --stacktrace "$@"; then
+  echo "[gradle-retry] Attempt ${attempt}/${max_attempts}: ./gradlew --no-daemon --stacktrace --no-configuration-cache $*" >&2
+  if ./gradlew --no-daemon --stacktrace --no-configuration-cache "$@"; then
     echo "[gradle-retry] Success on attempt ${attempt}." >&2
     exit 0
   fi
