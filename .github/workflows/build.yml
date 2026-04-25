@@ -26,6 +26,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup JDK 17 + Gradle cache (after Android setup)
+        id: setup_java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -47,10 +48,14 @@ jobs:
 
       - name: Force Java 17 for Gradle invocations
         run: |
-          if [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
+          if [[ -n "${{ steps.setup_java.outputs.path }}" ]]; then
+            echo "JAVA_HOME=${{ steps.setup_java.outputs.path }}" >> "$GITHUB_ENV"
+            echo "${{ steps.setup_java.outputs.path }}/bin" >> "$GITHUB_PATH"
+          elif [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
             echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
             echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           fi
+          echo "setup-java path output: ${{ steps.setup_java.outputs.path }}"
           echo "Effective JAVA_HOME after override: ${JAVA_HOME_17_X64:-$JAVA_HOME}"
           java -version
 
