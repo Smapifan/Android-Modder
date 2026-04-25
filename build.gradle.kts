@@ -49,11 +49,6 @@ android {
     }
 }
 
-repositories {
-    google()
-    mavenCentral()
-}
-
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -62,4 +57,24 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
+}
+
+tasks.register<JavaExec>("run") {
+    group = "application"
+    description = "Run the JVM CLI entry point (Main.kt) with --args support."
+    dependsOn("assembleDebug")
+    mainClass.set("com.smapifan.androidmodder.MainKt")
+    doFirst {
+        val debugRuntimeClasspath = configurations.findByName("debugRuntimeClasspath")
+            ?: throw org.gradle.api.GradleException(
+                "Missing debugRuntimeClasspath; run task is only available for Android debug variants."
+            )
+        classpath(
+            files(
+                "$buildDir/tmp/kotlin-classes/debug",
+                "$buildDir/intermediates/javac/debug/compileDebugJavaWithJavac/classes"
+            ),
+            debugRuntimeClasspath
+        )
+    }
 }
