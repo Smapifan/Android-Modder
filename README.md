@@ -239,6 +239,25 @@ val entry = catalogService.findOrGeneric(allApps, "com.unknown.game")
 ./gradlew assembleRelease
 ```
 
+
+## Sichere Branchnamen (wichtig für GitHub/Codex)
+
+Wenn ein automatisch erzeugter Branch-Name zu lang ist oder Sonderzeichen wie `%2C` enthält,
+kann das bei manchen Tools/Integrationen Probleme machen.
+
+Nutze dafür den Helper:
+
+```bash
+./scripts/make-safe-branch-name.sh "Add .codepatch support, Android app build"
+# -> codex/add-codepatch-support-android-app-build
+```
+
+Dann den Branch damit anlegen:
+
+```bash
+git checkout -b "$(./scripts/make-safe-branch-name.sh "<Titel>")"
+```
+
 ## Wichtige Grenzen
 
 Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen, kein APK-Patching und keine Manipulation fremder APKs. Der Workflow ist auf legale Nutzung mit offiziellen Store-Apps und auf benutzerseitige Datenverwaltung ausgelegt.
