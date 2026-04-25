@@ -26,39 +26,33 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup JDK 17 + Gradle cache (after Android setup)
+        id: setup_java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
           cache: gradle
 
-      - name: Install Android SDK components
-        run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
       - name: Verify active Java version
         run: |
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
 
-      - name: Ensure scripts are executable
-        run: chmod +x ./gradlew .github/scripts/*.sh
+      - name: Force Java 17 for Gradle invocations
+        run: |
+          if [[ -n "${{ steps.setup_java.outputs.path }}" ]]; then
+            echo "JAVA_HOME=${{ steps.setup_java.outputs.path }}" >> "$GITHUB_ENV"
+            echo "${{ steps.setup_java.outputs.path }}/bin" >> "$GITHUB_PATH"
+          elif [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
+            echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+            echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          fi
+          echo "setup-java path output: ${{ steps.setup_java.outputs.path }}"
+          echo "Effective JAVA_HOME after override: ${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          java -version
 
-      - name: Run unit tests (non-blocking)
-        id: unit_tests
-        continue-on-error: true
-        run: ./.github/scripts/ci-run-tests.sh
-
-      - name: Note test failures but continue build
-        if: steps.unit_tests.outcome == 'failure'
-        run: echo "Unit tests failed in CI, but build continues to guarantee artifact generation."
-
-      - name: Build artifacts (stable wrapper script)
-        run: ./.github/scripts/ci-build-artifacts.sh
+      - name: Run stable build pipeline
+        run: bash ./.github/scripts/ci-build.sh
 
       - name: Detect report/artifact files
         id: detect
