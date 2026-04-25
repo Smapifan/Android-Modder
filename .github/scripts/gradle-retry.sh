@@ -6,6 +6,28 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+ensure_java17() {
+  local current_version current_major
+  current_version="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+  current_major="${current_version%%.*}"
+
+  if [[ "$current_major" == "17" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${JAVA_HOME_17_X64:-}" ]]; then
+    export JAVA_HOME="$JAVA_HOME_17_X64"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    echo "[gradle-retry] Switched to JAVA_HOME_17_X64=$JAVA_HOME" >&2
+    java -version >&2
+    return 0
+  fi
+
+  echo "[gradle-retry] Warning: Java ${current_version:-unknown} detected and JAVA_HOME_17_X64 is unavailable." >&2
+}
+
+ensure_java17
+
 max_attempts="${MAX_ATTEMPTS:-3}"
 attempt=1
 
