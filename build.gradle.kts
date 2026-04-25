@@ -63,17 +63,3 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
 }
-
-tasks.register<JavaExec>("run") {
-    group = "application"
-    description = "Run the JVM CLI entry point (Main.kt) with --args support."
-    dependsOn("compileDebugKotlin")
-    mainClass.set("com.smapifan.androidmodder.MainKt")
-    classpath(
-        files(
-            "$buildDir/tmp/kotlin-classes/debug",
-            "$buildDir/intermediates/javac/debug/compileDebugJavaWithJavac/classes"
-        ),
-        configurations.getByName("debugRuntimeClasspath")
-    )
-}

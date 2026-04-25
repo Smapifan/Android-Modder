@@ -258,6 +258,17 @@ Dann den Branch damit anlegen:
 git checkout -b "$(./scripts/make-safe-branch-name.sh "<Titel>")"
 ```
 
+
+## CI-Stabilität (GitHub Actions)
+
+Der Workflow nutzt stabile Wrapper-Skripte unter `.github/scripts/`:
+
+- `.github/scripts/ci-run-tests.sh` – erkennt automatisch `testDebugUnitTest` oder `test`
+- `.github/scripts/ci-build-artifacts.sh` – baut bevorzugt APK (`assembleDebug`) mit Fallback
+- `.github/scripts/gradle-retry.sh` – führt Gradle-Befehle mit Retry/Backoff aus
+
+Damit werden temporäre Gradle-/Netz-Fehler in CI robuster abgefangen. Zusätzlich installiert der Workflow die Android-SDK-Komponenten (Platform 35 + Build-Tools 35.0.0) explizit, damit APK-Builds auf Runnern reproduzierbar laufen.
+
 ## Wichtige Grenzen
 
 Dieses Projekt enthält **keine** Funktion zum Umgehen von Schutzmechanismen, kein APK-Patching und keine Manipulation fremder APKs. Der Workflow ist auf legale Nutzung mit offiziellen Store-Apps und auf benutzerseitige Datenverwaltung ausgelegt.

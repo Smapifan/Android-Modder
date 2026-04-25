@@ -9,49 +9,45 @@ on:
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup JDK 21 + Gradle cache
-        uses: actions/setup-java@v4
+      - name: Setup JDK 17 + Gradle cache
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
           cache: gradle
 
-      - name: Ensure Gradle wrapper executable
-        run: chmod +x ./gradlew
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Run unit tests (Android/JVM auto-detect)
+      - name: Install Android SDK components
         run: |
-          if ./gradlew --no-daemon tasks --all | grep -q "testDebugUnitTest"; then
-            ./gradlew --no-daemon --stacktrace testDebugUnitTest
-          else
-            ./gradlew --no-daemon --stacktrace test
-          fi
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - name: Build artifacts (APK preferred)
-        run: |
-          if ./gradlew --no-daemon tasks --all | grep -q "assembleDebug"; then
-            ./gradlew --no-daemon --stacktrace assembleDebug
-          elif ./gradlew --no-daemon tasks --all | grep -q "assembleRelease"; then
-            ./gradlew --no-daemon --stacktrace assembleRelease
-          else
-            ./gradlew --no-daemon --stacktrace distZip
-          fi
+      - name: Ensure scripts are executable
+        run: chmod +x ./gradlew .github/scripts/*.sh
+
+      - name: Run unit tests (stable wrapper script)
+        run: ./.github/scripts/ci-run-tests.sh
+
+      - name: Build artifacts (stable wrapper script)
+        run: ./.github/scripts/ci-build-artifacts.sh
 
       - name: Upload JUnit reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: junit-reports
           if-no-files-found: warn
@@ -63,7 +59,7 @@ jobs:
 
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-artifacts
           if-no-files-found: warn
