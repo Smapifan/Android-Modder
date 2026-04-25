@@ -16,4 +16,14 @@ data class CodePatchConfig(
     val targetFiles: List<String> = emptyList(),
     val extensions: List<String> = emptyList(),
     val patches: List<CodePatchDefinition> = emptyList()
-)
+) {
+    init {
+        require(name.isNotBlank()) { "CodePatchConfig.name must not be blank" }
+        require(gameId.isNotBlank()) { "CodePatchConfig.gameId must not be blank" }
+        require(patches.isNotEmpty()) { "CodePatchConfig.patches must not be empty" }
+        require(targetFiles.none { it.isBlank() }) { "CodePatchConfig.targetFiles must not contain blank entries" }
+        require(extensions.none { it.isBlank() || it == "*" || it == ".*" }) {
+            "CodePatchConfig.extensions must not contain blank or wildcard-only entries"
+        }
+    }
+}
