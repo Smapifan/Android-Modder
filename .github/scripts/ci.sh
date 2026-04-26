@@ -205,7 +205,7 @@ has_gradle_task() {
     }
   fi
 
-  if grep -Eq "(^|[[:space:]:])${task}([[:space:]]|$)" "$task_file"; then
+  if awk 'match($0, /^[[:space:]]*([[:alnum:]_:-]+)[[:space:]]+-[[:space:]]+/, a) { print a[1] }' "$task_file" | grep -Fxq "$task"; then
     rm -f "$task_file"
     return 0
   fi
