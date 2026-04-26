@@ -217,8 +217,8 @@ run_tests_non_blocking() {
     if try_gradle_task "testDebugUnitTest"; then
       return 0
     fi
-    log_warn "testDebugUnitTest failed; continuing."
-    return 0
+    log_error "testDebugUnitTest failed."
+    return 1
   else
     rc=$?
   fi
@@ -231,16 +231,20 @@ run_tests_non_blocking() {
 
   if has_gradle_task "test"; then
     if ! try_gradle_task "test"; then
-      log_warn "test failed; continuing."
+      log_error "test failed."
+      return 1
     fi
   else
     rc=$?
     if [[ $rc -eq 2 ]]; then
       log_warn "No unit test task found; continuing."
     else
-      log_warn "Could not enumerate Gradle tasks for test; continuing."
+      log_error "Could not enumerate Gradle tasks for test."
+      return 1
     fi
   fi
+
+  return 0
 }
 
 build_artifacts_blocking() {
