@@ -38,24 +38,10 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
 
-      - name: Ensure scripts are executable
-        run: chmod +x ./gradlew .github/scripts/*.sh
-
-      - name: Run unit tests (non-blocking)
-        id: unit_tests
-        continue-on-error: true
+      - name: Run unified CI build script
         env:
           SETUP_JAVA_PATH: ${{ steps.setup_java.outputs.path }}
-        run: bash ./.github/scripts/ci-run-tests.sh
-
-      - name: Note test failures but continue build
-        if: steps.unit_tests.outcome == 'failure'
-        run: echo "Unit tests failed in CI, but build continues to guarantee artifact generation."
-
-      - name: Build artifacts
-        env:
-          SETUP_JAVA_PATH: ${{ steps.setup_java.outputs.path }}
-        run: bash ./.github/scripts/ci-build-artifacts.sh
+        run: bash ./.github/scripts/ci.sh
 
       - name: Detect report/artifact files
         id: detect
