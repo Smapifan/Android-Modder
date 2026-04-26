@@ -14,7 +14,7 @@ import java.io.File
  * own sandbox:
  *
  * ```
- * <appFilesRoot>/vdata/<packageName>/   ← virtual data root for <packageName>
+ * <appFilesRoot>/<packageName>/   ← virtual data root for <packageName>
  * ```
  *
  * Because Android-Modder owns the host directory, it can read and write there
@@ -27,13 +27,12 @@ import java.io.File
  *
  * ```
  * <appFilesRoot>/
- *   vdata/
- *     com.gram.mergedragons/
- *       files/
- *         save.dat
- *     com.kiloo.subwaysurf/
- *       files/
- *         playerData.dat
+ *   com.gram.mergedragons/
+ *     files/
+ *       save.dat
+ *   com.kiloo.subwaysurf/
+ *     files/
+ *       playerData.dat
  * ```
  *
  * ## No root required
@@ -51,8 +50,13 @@ class VirtualFileSystemService(
     companion object {
         const val DEFAULT_APP_FILES_ROOT = "/data/data/com.smapifan.androidmodder/files"
 
-        /** Sub-directory name inside [appFilesRoot] that holds all virtual data. */
-        const val VIRTUAL_DATA_SUBDIR = "vdata"
+        /**
+         * Legacy sub-directory name from older builds.
+         *
+         * New builds store package directories directly under [appFilesRoot] so
+         * paths match `/data/data/<this-app>/files/<pkg>/...` as requested.
+         */
+        const val LEGACY_VIRTUAL_DATA_SUBDIR = "vdata"
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -61,10 +65,10 @@ class VirtualFileSystemService(
 
     /**
      * Returns the virtual data root for [packageName]:
-     * `<appFilesRoot>/vdata/<packageName>/`
+     * `<appFilesRoot>/<packageName>/`
      */
     fun virtualDataRoot(packageName: String): String =
-        "$appFilesRoot/$VIRTUAL_DATA_SUBDIR/$packageName"
+        "$appFilesRoot/$packageName"
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Setup
@@ -90,9 +94,23 @@ class VirtualFileSystemService(
      * @return sorted list of package names
      */
     fun listInstalledPackages(): List<String> {
-        val root = File("$appFilesRoot/$VIRTUAL_DATA_SUBDIR")
-        if (!root.isDirectory) return emptyList()
-        return (root.list()?.toList() ?: emptyList()).sorted()
+        val primaryRoot = File(appFilesRoot)
+        val legacyRoot = File("$appFilesRoot/$LEGACY_VIRTUAL_DATA_SUBDIR")
+
+        val directPackages = primaryRoot.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?: emptyList()
+
+        val legacyPackages = legacyRoot.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?: emptyList()
+
+        return (directPackages + legacyPackages)
+            .filter { it.contains('.') }
+            .distinct()
+            .sorted()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
