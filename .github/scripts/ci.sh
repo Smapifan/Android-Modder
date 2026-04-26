@@ -140,8 +140,9 @@ run_tests_non_blocking() {
   if try_gradle_task "testDebugUnitTest"; then
     echo "[ci] testDebugUnitTest passed." >&2
     return 0
+  else
+    rc=$?
   fi
-  rc=$?
 
   if [[ $rc -eq 2 ]]; then
     echo "[ci] testDebugUnitTest not found; trying test." >&2
@@ -150,6 +151,7 @@ run_tests_non_blocking() {
     return 0
   fi
 
+  rc=0
   if try_gradle_task "test"; then
     echo "[ci] test passed." >&2
   else
@@ -169,28 +171,33 @@ build_artifacts_blocking() {
   if try_gradle_task "assembleDebug"; then
     echo "[ci] Built assembleDebug." >&2
     return 0
+  else
+    rc=$?
   fi
-  rc=$?
   if [[ $rc -ne 2 ]]; then
     echo "[ci] ERROR: assembleDebug failed." >&2
     return 1
   fi
 
+  rc=0
   if try_gradle_task "assembleRelease"; then
     echo "[ci] Built assembleRelease." >&2
     return 0
+  else
+    rc=$?
   fi
-  rc=$?
   if [[ $rc -ne 2 ]]; then
     echo "[ci] ERROR: assembleRelease failed." >&2
     return 1
   fi
 
+  rc=0
   if try_gradle_task "distZip"; then
     echo "[ci] Built distZip." >&2
     return 0
+  else
+    rc=$?
   fi
-  rc=$?
   if [[ $rc -ne 2 ]]; then
     echo "[ci] ERROR: distZip failed." >&2
     return 1
