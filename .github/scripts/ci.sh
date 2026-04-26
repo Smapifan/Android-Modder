@@ -23,13 +23,22 @@ retry() {
 
 fail_on_merge_conflict_markers() {
   echo "[ci] Checking repository for unresolved merge conflict markers." >&2
-  if rg -n '^(<<<<<<<|=======|>>>>>>>)' . --glob '!**/.git/**' --glob '!**/build/**' >/tmp/ci-merge-conflicts.txt; then
+  local log_file rg_rc
+  log_file="$(mktemp)"
+  if rg -n --hidden '^(<<<<<<< .+|=======$|>>>>>>> .+)$' . --glob '!.git/**' --glob '!**/build/**' >"$log_file"; then
     echo "[ci] ERROR: Unresolved merge conflict markers detected:" >&2
-    cat /tmp/ci-merge-conflicts.txt >&2
-    rm -f /tmp/ci-merge-conflicts.txt
+    cat "$log_file" >&2
+    rm -f "$log_file"
     return 1
   fi
-  rm -f /tmp/ci-merge-conflicts.txt
+  rg_rc=$?
+  if [[ $rg_rc -ne 1 ]]; then
+    echo "[ci] ERROR: merge-conflict scan failed (rg exit code: $rg_rc)." >&2
+    cat "$log_file" >&2 || true
+    rm -f "$log_file"
+    return 1
+  fi
+  rm -f "$log_file"
 }
 
 ensure_java17() {
