@@ -20,6 +20,7 @@ require_command() {
   fi
 }
 
+
 retry() {
   local attempts="$1"
   shift
