@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 35
     env:
       ANDROID_VERSION_CODE: ${{ github.run_number }}
-      ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+      ANDROID_VERSION_NAME: 1.0.1
 
     steps:
       - name: Checkout
