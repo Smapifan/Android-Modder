@@ -80,7 +80,7 @@ fail_on_merge_conflict_markers() {
 }
 
 ensure_java17() {
-  local current_version current_major candidate
+  local current_version current_major candidate candidate_version candidate_major
   current_version="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
   current_major="${current_version%%.*}"
 
@@ -96,10 +96,14 @@ ensure_java17() {
     "${JDK17_HOME:-}"
   do
     if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
-      export JAVA_HOME="$candidate"
-      export PATH="$JAVA_HOME/bin:$PATH"
-      log_warn "Switched to Java 17 via JAVA_HOME candidate."
-      return 0
+      candidate_version="$("$candidate/bin/java" -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+      candidate_major="${candidate_version%%.*}"
+      if [[ "$candidate_major" == "17" ]]; then
+        export JAVA_HOME="$candidate"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        log_warn "Switched to Java 17 via JAVA_HOME candidate."
+        return 0
+      fi
     fi
   done
 
