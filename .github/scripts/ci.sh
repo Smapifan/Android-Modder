@@ -21,6 +21,17 @@ retry() {
   done
 }
 
+fail_on_merge_conflict_markers() {
+  echo "[ci] Checking repository for unresolved merge conflict markers." >&2
+  if rg -n '^(<<<<<<<|=======|>>>>>>>)' . --glob '!**/.git/**' --glob '!**/build/**' >/tmp/ci-merge-conflicts.txt; then
+    echo "[ci] ERROR: Unresolved merge conflict markers detected:" >&2
+    cat /tmp/ci-merge-conflicts.txt >&2
+    rm -f /tmp/ci-merge-conflicts.txt
+    return 1
+  fi
+  rm -f /tmp/ci-merge-conflicts.txt
+}
+
 ensure_java17() {
   local current_version current_major candidate
   current_version="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
@@ -209,6 +220,8 @@ build_artifacts_blocking() {
 
 echo "[ci] Starting unified build script."
 chmod +x ./gradlew
+
+fail_on_merge_conflict_markers
 
 ensure_java17
 
