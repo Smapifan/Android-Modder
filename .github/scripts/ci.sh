@@ -34,23 +34,24 @@ retry() {
 
   local attempt=1 exit_code=0
   while (( attempt <= attempts )); do
+    echo "[ci] Attempt ${attempt}/${attempts}: $*" >&2
     if "$@"; then
       return 0
     fi
     exit_code=$?
 
     if (( attempt == attempts )); then
-      log_error "Command failed after ${attempts} attempts (last exit=${exit_code}): $*"
+      log_error "Command failed after ${attempts} attempts (last exit=${exit_code})."
       return 1
     fi
 
-    log_warn "Command failed (exit=${exit_code}), retrying (${attempt}/${attempts}): $*"
     sleep $(( attempt * 5 ))
     attempt=$(( attempt + 1 ))
   done
 }
 
 fail_on_merge_conflict_markers() {
+  echo "[ci] Checking repository for unresolved merge conflict markers." >&2
   local log_file rg_rc
   log_file="$(mktemp)"
   if command_exists rg; then
@@ -84,6 +85,7 @@ ensure_java17() {
   current_major="${current_version%%.*}"
 
   if [[ "$current_major" == "17" ]]; then
+    echo "[ci] Java 17 already active: $current_version" >&2
     return 0
   fi
 
@@ -97,7 +99,8 @@ ensure_java17() {
     if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
       export JAVA_HOME="$candidate"
       export PATH="$JAVA_HOME/bin:$PATH"
-      log_warn "Switched to Java 17 via JAVA_HOME candidate."
+      echo "[ci] Switched to Java 17: JAVA_HOME=$JAVA_HOME" >&2
+      java -version >&2
       return 0
     fi
   done
@@ -107,7 +110,8 @@ ensure_java17() {
     if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
       export JAVA_HOME="$candidate"
       export PATH="$JAVA_HOME/bin:$PATH"
-      log_warn "Switched to Java 17 via discovered hostedtoolcache path."
+      echo "[ci] Switched to discovered Java 17: JAVA_HOME=$JAVA_HOME" >&2
+      java -version >&2
       return 0
     fi
   fi
@@ -118,20 +122,19 @@ ensure_java17() {
 
 gradle_retry() {
   local max_attempts="${MAX_ATTEMPTS:-3}"
-  local attempt=1 rc=0
+  local attempt=1
 
   while (( attempt <= max_attempts )); do
+    echo "[ci] Gradle attempt ${attempt}/${max_attempts}: ./gradlew --no-daemon --stacktrace --no-configuration-cache $*" >&2
     if ./gradlew --no-daemon --stacktrace --no-configuration-cache "$@"; then
       return 0
     fi
-    rc=$?
 
     if (( attempt == max_attempts )); then
-      log_error "Gradle command failed after ${max_attempts} attempts (exit=${rc}): $*"
+      log_error "Gradle command failed after ${max_attempts} attempts."
       return 1
     fi
 
-    log_warn "Gradle command failed (exit=${rc}), retrying (${attempt}/${max_attempts}): $*"
     sleep $(( attempt * 5 ))
     attempt=$(( attempt + 1 ))
   done
@@ -141,6 +144,7 @@ install_first_available() {
   local package
   for package in "$@"; do
     if retry 3 sdkmanager --install "$package"; then
+      echo "[ci] Installed SDK package: $package" >&2
       return 0
     fi
   done
@@ -182,6 +186,7 @@ install_best_build_tools() {
     return 0
   fi
 
+  echo "[ci] Installing latest available build-tools version: ${version}" >&2
   retry 3 sdkmanager --install "build-tools;${version}" || {
     log_warn "Failed to install detected build-tools ${version}; continuing with fallback candidates."
     install_first_available "build-tools;35.0.0" "build-tools;35.0.1" "build-tools;34.0.0" || true
@@ -190,14 +195,16 @@ install_best_build_tools() {
 
 run_tests_non_blocking() {
   local rc=0
+  echo "[ci] Running unit tests (non-blocking)." >&2
   if try_gradle_task "testDebugUnitTest"; then
+    echo "[ci] testDebugUnitTest passed." >&2
     return 0
   else
     rc=$?
   fi
 
   if [[ $rc -eq 2 ]]; then
-    log_warn "testDebugUnitTest task not found; trying test."
+    echo "[ci] testDebugUnitTest not found; trying test." >&2
   else
     log_warn "testDebugUnitTest failed; continuing."
     return 0
@@ -205,7 +212,7 @@ run_tests_non_blocking() {
 
   rc=0
   if try_gradle_task "test"; then
-    true
+    echo "[ci] test passed." >&2
   else
     rc=$?
     if [[ $rc -eq 2 ]]; then
@@ -218,8 +225,10 @@ run_tests_non_blocking() {
 
 build_artifacts_blocking() {
   local rc=0
+  echo "[ci] Building artifacts." >&2
 
   if try_gradle_task "assembleRelease"; then
+    echo "[ci] Built assembleRelease." >&2
     return 0
   else
     rc=$?
@@ -231,6 +240,7 @@ build_artifacts_blocking() {
 
   rc=0
   if try_gradle_task "assembleDebug"; then
+    echo "[ci] Built assembleDebug." >&2
     return 0
   else
     rc=$?
@@ -242,6 +252,7 @@ build_artifacts_blocking() {
 
   rc=0
   if try_gradle_task "distZip"; then
+    echo "[ci] Built distZip." >&2
     return 0
   else
     rc=$?
@@ -255,6 +266,7 @@ build_artifacts_blocking() {
   return 1
 }
 
+echo "[ci] Starting unified build script."
 require_command java
 require_command bash
 require_command awk
@@ -273,10 +285,14 @@ fail_on_merge_conflict_markers
 
 ensure_java17
 
+echo "[ci] Accepting Android SDK licenses."
 retry 3 bash -lc 'yes | sdkmanager --licenses >/dev/null'
 
+echo "[ci] Installing Android SDK components."
 retry 3 sdkmanager --install "platform-tools" "platforms;android-35"
 install_best_build_tools
 
 run_tests_non_blocking
 build_artifacts_blocking
+
+echo "[ci] Unified build script completed."
