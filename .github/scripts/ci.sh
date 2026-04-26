@@ -12,14 +12,21 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+log_warn() {
+  echo "[ci] WARN: $*" >&2
+}
+
+log_error() {
+  echo "[ci] ERROR: $*" >&2
+}
+
 require_command() {
   local cmd="$1"
   if ! command_exists "$cmd"; then
-    echo "[ci] ERROR: Required command not found: $cmd" >&2
+    log_error "Required command not found: $cmd"
     return 1
   fi
 }
-
 
 retry() {
   local attempts="$1"
@@ -34,7 +41,7 @@ retry() {
     exit_code=$?
 
     if (( attempt == attempts )); then
-      echo "[ci] ERROR: Command failed after ${attempts} attempts (last exit=${exit_code})." >&2
+      log_error "Command failed after ${attempts} attempts (last exit=${exit_code})."
       return 1
     fi
 
@@ -58,13 +65,13 @@ fail_on_merge_conflict_markers() {
   fi
 
   if [[ $rg_rc -eq 0 ]]; then
-    echo "[ci] ERROR: Unresolved merge conflict markers detected:" >&2
+    log_error "Unresolved merge conflict markers detected:"
     cat "$log_file" >&2
     rm -f "$log_file"
     return 1
   fi
   if [[ $rg_rc -ne 1 ]]; then
-    echo "[ci] ERROR: merge-conflict scan failed (search exit code: $rg_rc)." >&2
+    log_error "Merge-conflict scan failed (search exit code: $rg_rc)."
     cat "$log_file" >&2 || true
     rm -f "$log_file"
     return 1
@@ -109,7 +116,7 @@ ensure_java17() {
     fi
   fi
 
-  echo "[ci] ERROR: Java 17 was not found. Active Java is ${current_version:-unknown}." >&2
+  log_error "Java 17 was not found. Active Java is ${current_version:-unknown}."
   return 1
 }
 
@@ -124,6 +131,7 @@ gradle_retry() {
     fi
 
     if (( attempt == max_attempts )); then
+      log_error "Gradle command failed after ${max_attempts} attempts."
       return 1
     fi
 
@@ -141,7 +149,7 @@ install_first_available() {
     fi
   done
 
-  echo "[ci] ERROR: Could not install any candidate package: $*" >&2
+  log_error "Could not install any candidate package: $*"
   return 1
 }
 
@@ -171,16 +179,16 @@ install_best_build_tools() {
   version="$(printf '%s\n' "$versions" | tail -n 1)"
 
   if [[ -z "$version" ]]; then
-    echo "[ci] WARN: Could not detect available build-tools version; trying known fallbacks." >&2
+    log_warn "Could not detect available build-tools version; trying known fallbacks."
     if ! install_first_available "build-tools;35.0.0" "build-tools;35.0.1" "build-tools;34.0.0"; then
-      echo "[ci] WARN: Build-tools fallback installation failed; continuing because AGP may resolve tools automatically." >&2
+      log_warn "Build-tools fallback installation failed; continuing because AGP may resolve tools automatically."
     fi
     return 0
   fi
 
   echo "[ci] Installing latest available build-tools version: ${version}" >&2
   retry 3 sdkmanager --install "build-tools;${version}" || {
-    echo "[ci] WARN: Failed to install detected build-tools ${version}; continuing with fallback candidates." >&2
+    log_warn "Failed to install detected build-tools ${version}; continuing with fallback candidates."
     install_first_available "build-tools;35.0.0" "build-tools;35.0.1" "build-tools;34.0.0" || true
   }
 }
@@ -198,7 +206,7 @@ run_tests_non_blocking() {
   if [[ $rc -eq 2 ]]; then
     echo "[ci] testDebugUnitTest not found; trying test." >&2
   else
-    echo "[ci] WARN: testDebugUnitTest failed; continuing." >&2
+    log_warn "testDebugUnitTest failed; continuing."
     return 0
   fi
 
@@ -208,9 +216,9 @@ run_tests_non_blocking() {
   else
     rc=$?
     if [[ $rc -eq 2 ]]; then
-      echo "[ci] WARN: No unit test task found; continuing." >&2
+      log_warn "No unit test task found; continuing."
     else
-      echo "[ci] WARN: test failed; continuing." >&2
+      log_warn "test failed; continuing."
     fi
   fi
 }
@@ -219,18 +227,6 @@ build_artifacts_blocking() {
   local rc=0
   echo "[ci] Building artifacts." >&2
 
-  if try_gradle_task "assembleDebug"; then
-    echo "[ci] Built assembleDebug." >&2
-    return 0
-  else
-    rc=$?
-  fi
-  if [[ $rc -ne 2 ]]; then
-    echo "[ci] ERROR: assembleDebug failed." >&2
-    return 1
-  fi
-
-  rc=0
   if try_gradle_task "assembleRelease"; then
     echo "[ci] Built assembleRelease." >&2
     return 0
@@ -238,7 +234,19 @@ build_artifacts_blocking() {
     rc=$?
   fi
   if [[ $rc -ne 2 ]]; then
-    echo "[ci] ERROR: assembleRelease failed." >&2
+    log_error "assembleRelease failed."
+    return 1
+  fi
+
+  rc=0
+  if try_gradle_task "assembleDebug"; then
+    echo "[ci] Built assembleDebug." >&2
+    return 0
+  else
+    rc=$?
+  fi
+  if [[ $rc -ne 2 ]]; then
+    log_error "assembleDebug failed."
     return 1
   fi
 
@@ -250,11 +258,11 @@ build_artifacts_blocking() {
     rc=$?
   fi
   if [[ $rc -ne 2 ]]; then
-    echo "[ci] ERROR: distZip failed." >&2
+    log_error "distZip failed."
     return 1
   fi
 
-  echo "[ci] ERROR: No supported build task found (assembleDebug/assembleRelease/distZip)." >&2
+  log_error "No supported build task found (assembleRelease/assembleDebug/distZip)."
   return 1
 }
 
@@ -268,7 +276,7 @@ require_command xargs
 require_command sdkmanager
 
 if [[ ! -f "./gradlew" ]]; then
-  echo "[ci] ERROR: ./gradlew not found." >&2
+  log_error "./gradlew not found."
   exit 1
 fi
 chmod +x ./gradlew
