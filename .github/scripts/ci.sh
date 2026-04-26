@@ -36,8 +36,9 @@ retry() {
   while (( attempt <= attempts )); do
     if "$@"; then
       return 0
+    else
+      exit_code=$?
     fi
-    exit_code=$?
 
     if (( attempt == attempts )); then
       log_error "Command failed after ${attempts} attempts (last exit=${exit_code}): $*"
@@ -78,8 +79,26 @@ fail_on_merge_conflict_markers() {
   rm -f "$log_file"
 }
 
+validate_git_tree_state() {
+  local unmerged
+
+  require_command git
+
+  if ! git rev-parse --verify HEAD^{tree} >/dev/null 2>&1; then
+    log_error "Git tree is not readable (HEAD^{tree} verification failed)."
+    return 1
+  fi
+
+  unmerged="$(git diff --name-only --diff-filter=U)"
+  if [[ -n "$unmerged" ]]; then
+    log_error "Git index contains unmerged paths:"
+    printf '%s\n' "$unmerged" >&2
+    return 1
+  fi
+}
+
 ensure_java17() {
-  local current_version current_major candidate
+  local current_version current_major candidate candidate_version candidate_major
   current_version="$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
   current_major="${current_version%%.*}"
 
@@ -95,10 +114,14 @@ ensure_java17() {
     "${JDK17_HOME:-}"
   do
     if [[ -n "$candidate" && -x "$candidate/bin/java" ]]; then
-      export JAVA_HOME="$candidate"
-      export PATH="$JAVA_HOME/bin:$PATH"
-      log_warn "Switched to Java 17 via JAVA_HOME candidate."
-      return 0
+      candidate_version="$("$candidate/bin/java" -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')"
+      candidate_major="${candidate_version%%.*}"
+      if [[ "$candidate_major" == "17" ]]; then
+        export JAVA_HOME="$candidate"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        log_warn "Switched to Java 17 via JAVA_HOME candidate."
+        return 0
+      fi
     fi
   done
 
@@ -123,8 +146,9 @@ gradle_retry() {
   while (( attempt <= max_attempts )); do
     if ./gradlew --no-daemon --stacktrace --no-configuration-cache "$@"; then
       return 0
+    else
+      rc=$?
     fi
-    rc=$?
 
     if (( attempt == max_attempts )); then
       log_error "Gradle command failed after ${max_attempts} attempts (exit=${rc}): $*"
@@ -169,6 +193,27 @@ try_gradle_task() {
   return 1
 }
 
+has_gradle_task() {
+  local task="$1"
+  local task_file
+  task_file="$(mktemp)"
+
+  if ! ./gradlew --no-daemon -q tasks --all >"$task_file" 2>/dev/null; then
+    ./gradlew --no-daemon tasks --all >"$task_file" 2>/dev/null || {
+      rm -f "$task_file"
+      return 1
+    }
+  fi
+
+  if grep -Eq "(^|[[:space:]:])${task}([[:space:]]|$)" "$task_file"; then
+    rm -f "$task_file"
+    return 0
+  fi
+
+  rm -f "$task_file"
+  return 2
+}
+
 install_best_build_tools() {
   local versions version
   versions="$(sdkmanager --list 2>/dev/null | awk -F'[ ;|]+' '/build-tools;[0-9]+\.[0-9]+\.[0-9]+/ {print $3}' | sort -V | uniq)"
@@ -190,8 +235,12 @@ install_best_build_tools() {
 
 run_tests_non_blocking() {
   local rc=0
-  if try_gradle_task "testDebugUnitTest"; then
-    return 0
+  if has_gradle_task "testDebugUnitTest"; then
+    if try_gradle_task "testDebugUnitTest"; then
+      return 0
+    fi
+    log_error "testDebugUnitTest failed."
+    return 1
   else
     rc=$?
   fi
@@ -199,43 +248,56 @@ run_tests_non_blocking() {
   if [[ $rc -eq 2 ]]; then
     log_warn "testDebugUnitTest task not found; trying test."
   else
-    log_warn "testDebugUnitTest failed; continuing."
-    return 0
+    log_warn "Could not enumerate Gradle tasks for testDebugUnitTest; trying test."
   fi
 
-  rc=0
-  if try_gradle_task "test"; then
-    true
+  if has_gradle_task "test"; then
+    if ! try_gradle_task "test"; then
+      log_error "test failed."
+      return 1
+    fi
   else
     rc=$?
     if [[ $rc -eq 2 ]]; then
       log_warn "No unit test task found; continuing."
     else
-      log_warn "test failed; continuing."
+      log_error "Could not enumerate Gradle tasks for test."
+      return 1
     fi
   fi
+
+  return 0
 }
 
 build_artifacts_blocking() {
   local rc=0 built_any=0
 
-  if try_gradle_task "assembleRelease"; then
-    built_any=1
+  if has_gradle_task "assembleRelease"; then
+    if try_gradle_task "assembleRelease"; then
+      built_any=1
+    else
+      log_error "assembleRelease failed."
+      return 1
+    fi
   else
     rc=$?
     if [[ $rc -ne 2 ]]; then
-      log_error "assembleRelease failed."
+      log_error "Could not enumerate Gradle tasks for assembleRelease."
       return 1
     fi
   fi
 
-  rc=0
-  if try_gradle_task "assembleDebug"; then
-    built_any=1
+  if has_gradle_task "assembleDebug"; then
+    if try_gradle_task "assembleDebug"; then
+      built_any=1
+    else
+      log_error "assembleDebug failed."
+      return 1
+    fi
   else
     rc=$?
     if [[ $rc -ne 2 ]]; then
-      log_error "assembleDebug failed."
+      log_error "Could not enumerate Gradle tasks for assembleDebug."
       return 1
     fi
   fi
@@ -244,14 +306,16 @@ build_artifacts_blocking() {
     return 0
   fi
 
-  rc=0
-  if try_gradle_task "distZip"; then
-    return 0
-  else
-    rc=$?
-  fi
-  if [[ $rc -ne 2 ]]; then
+  if has_gradle_task "distZip"; then
+    if try_gradle_task "distZip"; then
+      return 0
+    fi
     log_error "distZip failed."
+    return 1
+  fi
+  rc=$?
+  if [[ $rc -ne 2 ]]; then
+    log_error "Could not enumerate Gradle tasks for distZip."
     return 1
   fi
 
@@ -275,6 +339,7 @@ prepare_environment() {
 }
 
 run_full_pipeline() {
+  validate_git_tree_state
   fail_on_merge_conflict_markers
   ensure_java17
   install_android_sdk_components
@@ -290,6 +355,7 @@ install_android_sdk_components() {
 }
 
 run_tests_only() {
+  validate_git_tree_state
   fail_on_merge_conflict_markers
   ensure_java17
   install_android_sdk_components
@@ -297,6 +363,7 @@ run_tests_only() {
 }
 
 run_build_only() {
+  validate_git_tree_state
   fail_on_merge_conflict_markers
   ensure_java17
   install_android_sdk_components
@@ -304,6 +371,7 @@ run_build_only() {
 }
 
 run_sdk_setup_only() {
+  validate_git_tree_state
   fail_on_merge_conflict_markers
   ensure_java17
   install_android_sdk_components
@@ -326,6 +394,7 @@ case "${1:-all}" in
     ;;
   gradle)
     shift || true
+    validate_git_tree_state
     fail_on_merge_conflict_markers
     ensure_java17
     gradle_retry "$@"
