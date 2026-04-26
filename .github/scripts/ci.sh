@@ -259,28 +259,64 @@ build_artifacts_blocking() {
   return 1
 }
 
-require_command java
-require_command bash
-require_command awk
-require_command sort
-require_command head
-require_command xargs
-require_command sdkmanager
+prepare_environment() {
+  require_command java
+  require_command bash
+  require_command awk
+  require_command sort
+  require_command head
+  require_command xargs
 
-if [[ ! -f "./gradlew" ]]; then
-  log_error "./gradlew not found."
-  exit 1
-fi
-chmod +x ./gradlew
+  if [[ ! -f "./gradlew" ]]; then
+    log_error "./gradlew not found."
+    exit 1
+  fi
+  chmod +x ./gradlew
+}
 
-fail_on_merge_conflict_markers
+run_full_pipeline() {
+  require_command sdkmanager
+  fail_on_merge_conflict_markers
+  ensure_java17
+  retry 3 bash -lc 'yes | sdkmanager --licenses >/dev/null'
+  retry 3 sdkmanager --install "platform-tools" "platforms;android-35"
+  install_best_build_tools
+  run_tests_non_blocking
+  build_artifacts_blocking
+}
 
-ensure_java17
+run_tests_only() {
+  fail_on_merge_conflict_markers
+  ensure_java17
+  run_tests_non_blocking
+}
 
-retry 3 bash -lc 'yes | sdkmanager --licenses >/dev/null'
+run_build_only() {
+  fail_on_merge_conflict_markers
+  ensure_java17
+  build_artifacts_blocking
+}
 
-retry 3 sdkmanager --install "platform-tools" "platforms;android-35"
-install_best_build_tools
+prepare_environment
 
-run_tests_non_blocking
-build_artifacts_blocking
+case "${1:-all}" in
+  all)
+    run_full_pipeline
+    ;;
+  tests)
+    run_tests_only
+    ;;
+  build)
+    run_build_only
+    ;;
+  gradle)
+    shift || true
+    fail_on_merge_conflict_markers
+    ensure_java17
+    gradle_retry "$@"
+    ;;
+  *)
+    log_error "Unknown mode: ${1:-}. Supported: all|tests|build|gradle"
+    exit 2
+    ;;
+esac
