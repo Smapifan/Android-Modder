@@ -36,9 +36,8 @@ retry() {
   while (( attempt <= attempts )); do
     if "$@"; then
       return 0
-    else
-      exit_code=$?
     fi
+    exit_code=$?
 
     if (( attempt == attempts )); then
       log_error "Command failed after ${attempts} attempts (last exit=${exit_code}): $*"
@@ -124,9 +123,8 @@ gradle_retry() {
   while (( attempt <= max_attempts )); do
     if ./gradlew --no-daemon --stacktrace --no-configuration-cache "$@"; then
       return 0
-    else
-      rc=$?
     fi
+    rc=$?
 
     if (( attempt == max_attempts )); then
       log_error "Gradle command failed after ${max_attempts} attempts (exit=${rc}): $*"
