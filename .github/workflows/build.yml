@@ -26,39 +26,22 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup JDK 17 + Gradle cache (after Android setup)
+        id: setup_java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
           cache: gradle
 
-      - name: Install Android SDK components
-        run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
       - name: Verify active Java version
         run: |
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
 
-      - name: Ensure scripts are executable
-        run: chmod +x ./gradlew .github/scripts/*.sh
-
-      - name: Run unit tests (non-blocking)
-        id: unit_tests
-        continue-on-error: true
-        run: ./.github/scripts/ci-run-tests.sh
-
-      - name: Note test failures but continue build
-        if: steps.unit_tests.outcome == 'failure'
-        run: echo "Unit tests failed in CI, but build continues to guarantee artifact generation."
-
-      - name: Build artifacts (stable wrapper script)
-        run: ./.github/scripts/ci-build-artifacts.sh
+      - name: Run unified CI build script
+        env:
+          SETUP_JAVA_PATH: ${{ steps.setup_java.outputs.path }}
+        run: bash ./.github/scripts/ci.sh
 
       - name: Detect report/artifact files
         id: detect
