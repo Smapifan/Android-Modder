@@ -292,6 +292,7 @@ install_android_sdk_components() {
 run_tests_only() {
   fail_on_merge_conflict_markers
   ensure_java17
+  install_android_sdk_components
   run_tests_non_blocking
 }
 
@@ -300,6 +301,12 @@ run_build_only() {
   ensure_java17
   install_android_sdk_components
   build_artifacts_blocking
+}
+
+run_sdk_setup_only() {
+  fail_on_merge_conflict_markers
+  ensure_java17
+  install_android_sdk_components
 }
 
 prepare_environment
@@ -314,6 +321,9 @@ case "${1:-all}" in
   build)
     run_build_only
     ;;
+  sdk)
+    run_sdk_setup_only
+    ;;
   gradle)
     shift || true
     fail_on_merge_conflict_markers
@@ -321,7 +331,7 @@ case "${1:-all}" in
     gradle_retry "$@"
     ;;
   *)
-    log_error "Unknown mode: ${1:-}. Supported: all|tests|build|gradle"
+    log_error "Unknown mode: ${1:-}. Supported: all|tests|build|sdk|gradle"
     exit 2
     ;;
 esac
