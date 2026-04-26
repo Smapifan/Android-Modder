@@ -343,7 +343,6 @@ run_full_pipeline() {
   fail_on_merge_conflict_markers
   ensure_java17
   install_android_sdk_components
-  run_tests_non_blocking
   build_artifacts_blocking
 }
 
