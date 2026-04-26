@@ -1,18 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+on_error() {
+  local exit_code=$?
+  echo "[ci] ERROR: command failed (exit=${exit_code}) at line ${BASH_LINENO[0]}: ${BASH_COMMAND}" >&2
+  exit "$exit_code"
+}
+trap on_error ERR
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+require_command() {
+  local cmd="$1"
+  if ! command_exists "$cmd"; then
+    echo "[ci] ERROR: Required command not found: $cmd" >&2
+    return 1
+  fi
+}
+
+
 retry() {
   local attempts="$1"
   shift
 
-  local attempt=1
+  local attempt=1 exit_code=0
   while (( attempt <= attempts )); do
     echo "[ci] Attempt ${attempt}/${attempts}: $*" >&2
     if "$@"; then
       return 0
     fi
+    exit_code=$?
 
     if (( attempt == attempts )); then
+      echo "[ci] ERROR: Command failed after ${attempts} attempts (last exit=${exit_code})." >&2
       return 1
     fi
 
@@ -25,15 +47,24 @@ fail_on_merge_conflict_markers() {
   echo "[ci] Checking repository for unresolved merge conflict markers." >&2
   local log_file rg_rc
   log_file="$(mktemp)"
-  if rg -n --hidden '^(<<<<<<< .+|=======$|>>>>>>> .+)$' . --glob '!.git/**' --glob '!**/build/**' >"$log_file"; then
+  if command_exists rg; then
+    rg -n --hidden '^(<<<<<<< .+|=======$|>>>>>>> .+)$' . --glob '!.git/**' --glob '!**/build/**' >"$log_file" || rg_rc=$?
+    rg_rc="${rg_rc:-0}"
+  else
+    grep -R -n -E '^(<<<<<<< .+|=======$|>>>>>>> .+)$' . \
+      --exclude-dir=.git \
+      --exclude-dir=build >"$log_file" || rg_rc=$?
+    rg_rc="${rg_rc:-0}"
+  fi
+
+  if [[ $rg_rc -eq 0 ]]; then
     echo "[ci] ERROR: Unresolved merge conflict markers detected:" >&2
     cat "$log_file" >&2
     rm -f "$log_file"
     return 1
   fi
-  rg_rc=$?
   if [[ $rg_rc -ne 1 ]]; then
-    echo "[ci] ERROR: merge-conflict scan failed (rg exit code: $rg_rc)." >&2
+    echo "[ci] ERROR: merge-conflict scan failed (search exit code: $rg_rc)." >&2
     cat "$log_file" >&2 || true
     rm -f "$log_file"
     return 1
@@ -228,6 +259,18 @@ build_artifacts_blocking() {
 }
 
 echo "[ci] Starting unified build script."
+require_command java
+require_command bash
+require_command awk
+require_command sort
+require_command head
+require_command xargs
+require_command sdkmanager
+
+if [[ ! -f "./gradlew" ]]; then
+  echo "[ci] ERROR: ./gradlew not found." >&2
+  exit 1
+fi
 chmod +x ./gradlew
 
 fail_on_merge_conflict_markers
