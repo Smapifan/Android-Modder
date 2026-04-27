@@ -29,7 +29,7 @@ class VirtualFileSystemServiceTest {
     fun `virtualDataRoot returns correct path`() {
         val svc = service()
         assertEquals(
-            "${tempDir.absolutePath}/vdata/com.example.game",
+            "${tempDir.absolutePath}/com.example.game",
             svc.virtualDataRoot("com.example.game")
         )
     }
@@ -71,6 +71,14 @@ class VirtualFileSystemServiceTest {
 
         val packages = svc.listInstalledPackages()
         assertEquals(listOf("com.a.first", "com.m.middle", "com.z.last"), packages)
+    }
+
+    @Test
+    fun `listInstalledPackages includes legacy vdata packages`() {
+        val svc = service()
+        File(tempDir, "vdata/com.legacy.game/files").mkdirs()
+        svc.ensureVirtualDir("com.new.game")
+        assertEquals(listOf("com.legacy.game", "com.new.game"), svc.listInstalledPackages())
     }
 
     // ─────────────────────────────────────────────────────────────────────────

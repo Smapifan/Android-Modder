@@ -1,8 +1,25 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application") version "8.5.2"
     kotlin("android") version "2.0.21"
     kotlin("plugin.serialization") version "2.0.21"
 }
+
+val keystoreProps = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+val storeFilePath = (keystoreProps.getProperty("storeFile") ?: System.getenv("ANDROID_STORE_FILE")).orEmpty()
+val storePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("ANDROID_STORE_PASSWORD")
+val keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("ANDROID_KEY_ALIAS")
+val keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("ANDROID_KEY_PASSWORD")
+val appVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
+val appVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
+val forceUnsignedRelease = (System.getenv("FORCE_UNSIGNED_RELEASE") ?: "0") == "1"
 
 android {
     namespace = "com.smapifan.androidmodder"
@@ -12,14 +29,17 @@ android {
         applicationId = "com.smapifan.androidmodder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!forceUnsignedRelease && storeFilePath.isNotBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -45,6 +65,17 @@ android {
     testOptions {
         unitTests.all {
             it.useJUnit()
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (storeFilePath.isNotBlank()) {
+                storeFile = file(storeFilePath)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
         }
     }
 }

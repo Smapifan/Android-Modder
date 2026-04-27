@@ -17,6 +17,9 @@ jobs:
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
 
     steps:
       - name: Checkout
@@ -44,6 +47,11 @@ jobs:
         run: |
           echo "JAVA_HOME=$JAVA_HOME"
           java -version
+
+      - name: Show Android app version injected by workflow
+        run: |
+          echo "ANDROID_VERSION_CODE=$ANDROID_VERSION_CODE"
+          echo "ANDROID_VERSION_NAME=$ANDROID_VERSION_NAME"
 
       - name: Ensure scripts are executable
         run: chmod +x ./gradlew .github/scripts/*.sh
