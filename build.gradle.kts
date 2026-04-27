@@ -19,6 +19,7 @@ val keyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("ANDROID_K
 val keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("ANDROID_KEY_PASSWORD")
 val appVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
 val appVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
+val forceUnsignedRelease = (System.getenv("FORCE_UNSIGNED_RELEASE") ?: "0") == "1"
 
 android {
     namespace = "com.smapifan.androidmodder"
@@ -36,7 +37,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (storeFilePath.isNotBlank()) {
+            if (!forceUnsignedRelease && storeFilePath.isNotBlank()) {
                 signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
