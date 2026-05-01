@@ -45,7 +45,7 @@ import java.io.InputStream
 class AppInstallManagerService(
     private val context: android.content.Context?,
     val filesRoot: String = requireNotNull(context) {
-        "filesRoot must be supplied when context is null"
+        "context must be non-null when filesRoot is not explicitly provided"
     }.filesDir.absolutePath
 ) {
 
@@ -66,6 +66,14 @@ class AppInstallManagerService(
         const val MODS_DIR        = "mods"
         const val DATA_DATA_DIR   = "data/data"
         val STANDARD_SUBDIRS      = listOf("files", "cache", "databases", "shared_prefs")
+
+        /**
+         * Marker file written inside each virtual package directory on install.
+         * Its presence is used by [listInstalledPackages] to reliably identify
+         * directories that were created by this service (rather than relying on
+         * a fragile dot-in-name heuristic).
+         */
+        const val INSTALL_MARKER  = ".androidmodder_install"
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -121,6 +129,10 @@ class AppInstallManagerService(
 
             // 3. Create mod-layers directory
             File(modsRoot(packageId)).mkdirs()
+
+            // 4. Write install marker so listInstalledPackages can reliably
+            //    identify directories created by this service.
+            File("$filesRoot/$packageId", INSTALL_MARKER).writeText(packageId)
 
             true
         }.getOrDefault(false)
@@ -180,21 +192,25 @@ class AppInstallManagerService(
     /**
      * Lists all package IDs that have been virtually installed.
      *
+     * Uses the presence of an [INSTALL_MARKER] file to identify directories
+     * created by this service, rather than relying on a heuristic.
+     *
      * @return sorted list of package names
      */
     fun listInstalledPackages(): List<String> =
         File(filesRoot)
             .listFiles()
-            ?.filter { it.isDirectory && it.name != APPS_DIR && it.name.contains('.') }
+            ?.filter { it.isDirectory && File(it, INSTALL_MARKER).exists() }
             ?.map { it.name }
             ?.sorted()
             ?: emptyList()
 
     /**
-     * Returns `true` if [packageId] has a virtual installation.
+     * Returns `true` if [packageId] has a virtual installation
+     * (identified by the [INSTALL_MARKER] file).
      */
     fun isInstalled(packageId: String): Boolean =
-        File(filesRoot, packageId).isDirectory
+        File("$filesRoot/$packageId", INSTALL_MARKER).exists()
 
     /**
      * Uninstalls [packageId] from the virtual sandbox, removing its APK,
