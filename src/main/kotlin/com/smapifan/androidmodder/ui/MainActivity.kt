@@ -223,7 +223,7 @@ class MainActivity : AppCompatActivity() {
         return layout
     }
 
-    /** Tab 4 – Root shell browser for /data/data. */
+    /** Tab 4 – In-app file browser for the virtual data/data sandbox. */
     private fun buildRootBrowserTab(): View {
         val scroll = ScrollView(this)
         val layout = LinearLayout(this).apply {
@@ -234,7 +234,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(sectionHeader(i18n.get("root.section.header")))
         layout.addView(infoText(i18n.get("root.description")))
 
-        layout.addView(button(i18n.get("root.browse_data_data")) { openRootBrowserPreview("/data/data") })
         layout.addView(button(i18n.get("root.browse_sandbox")) {
             openRootBrowserPreview(filesDir.absolutePath)
         })
@@ -394,23 +393,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openRootBrowserPreview(path: String) {
-        val isSandbox = path.startsWith(filesDir.absolutePath)
-        val output = if (isSandbox) {
-            // No root needed – browse our own sandbox with plain Java I/O
-            val sb = StringBuilder()
-            sb.appendLine(i18n.format("root.sandbox_listing", path))
-            sb.appendLine()
-            listDirRecursive(File(path), sb, depth = 0, maxDepth = 4)
-            sb.toString()
-        } else {
-            val command = listOf("su", "-c", "ls -la $path | head -n 60")
-            runCatching {
-                ProcessBuilder(command).redirectErrorStream(true).start()
-                    .inputStream.bufferedReader().readText()
-            }.getOrElse {
-                i18n.format("root.access_failed", it.message ?: "")
-            }
-        }
+        val sb = StringBuilder()
+        sb.appendLine(i18n.format("root.sandbox_listing", path))
+        sb.appendLine()
+        listDirRecursive(File(path), sb, depth = 0, maxDepth = 4)
+        val output = sb.toString()
 
         AlertDialog.Builder(this)
             .setTitle(i18n.format("root.preview_title", path))

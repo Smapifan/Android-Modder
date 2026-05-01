@@ -34,6 +34,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            if (storeFilePath.isNotBlank()) {
+                storeFile = file(storeFilePath)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -65,17 +76,6 @@ android {
     testOptions {
         unitTests.all {
             it.useJUnit()
-        }
-    }
-
-    signingConfigs {
-        create("release") {
-            if (storeFilePath.isNotBlank()) {
-                storeFile = file(storeFilePath)
-                this.storePassword = storePassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
-            }
         }
     }
 }
