@@ -52,6 +52,10 @@ jobs:
       - name: Build artifacts
         env:
           SETUP_JAVA_PATH: ${{ steps.setup_java.outputs.path }}
+          ANDROID_STORE_FILE: ${{ github.workspace }}/Android-Modder.jks
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash ./.github/scripts/ci-build-artifacts.sh
 
       - name: Detect report/artifact files
