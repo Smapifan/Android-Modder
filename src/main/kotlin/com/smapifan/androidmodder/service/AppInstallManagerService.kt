@@ -14,21 +14,22 @@ import java.io.InputStream
  *
  * ## Virtual directory layout
  *
+ * All data lands inside Android-Modder's own `files/` directory
+ * (`/data/data/com.smapifan.androidmodder/files/`), using a flat structure
+ * that mirrors how Android organises app data:
+ *
  * ```
- * <filesRoot>/
+ * <filesRoot>/                            = …/files/
  *   apps/
- *     <packageId>.apk           ← original APK archive
- *   <packageId>/
- *     data/
- *       data/
- *         <packageId>/
- *           files/              ← standard internal files (like /data/data/<pkg>/files/)
- *           cache/              ← cache
- *           databases/          ← SQLite databases
- *           shared_prefs/       ← SharedPreferences XML files
- *     mods/                     ← mod-layer directories
+ *     <packageId>.apk                     ← APK archive  (files/apps/<pkg>.apk)
+ *   <packageId>/                          ← save / data root  (files/<pkg>/)
+ *     files/                              ← like /data/data/<pkg>/files/
+ *     cache/
+ *     databases/
+ *     shared_prefs/
+ *     mods/                               ← mod-layer directories
  *       <modName>/
- *         ...
+ *     .androidmodder_install              ← install marker
  * ```
  *
  * Because all paths are inside Android-Modder's own `files/` directory, no
@@ -64,7 +65,6 @@ class AppInstallManagerService(
     companion object {
         const val APPS_DIR        = "apps"
         const val MODS_DIR        = "mods"
-        const val DATA_DATA_DIR   = "data/data"
         val STANDARD_SUBDIRS      = listOf("files", "cache", "databases", "shared_prefs")
 
         /**
@@ -85,11 +85,16 @@ class AppInstallManagerService(
         "$filesRoot/$APPS_DIR/$packageId.apk"
 
     /**
-     * Virtual data root for [packageId]:
-     * `<filesRoot>/<packageId>/data/data/<packageId>`
+     * Virtual data root for [packageId] – the flat per-package directory:
+     * `<filesRoot>/<packageId>`
+     *
+     * This is where `files/`, `cache/`, `databases/`, and `shared_prefs/` live,
+     * mirroring `/data/data/<pkg>/` on a real device but without requiring root.
+     * In absolute terms this resolves to:
+     * `/data/data/com.smapifan.androidmodder/files/<packageId>`
      */
     fun dataDataRoot(packageId: String): String =
-        "$filesRoot/$packageId/$DATA_DATA_DIR/$packageId"
+        "$filesRoot/$packageId"
 
     /**
      * Mod-layers root for [packageId]:
@@ -105,10 +110,14 @@ class AppInstallManagerService(
     /**
      * Installs an APK stream into the virtual sandbox.
      *
-     * 1. Copies the APK bytes to `<filesRoot>/apps/<packageId>.apk`.
-     * 2. Creates the standard directory structure under
-     *    `<filesRoot>/<packageId>/data/data/<packageId>/`.
+     * 1. Copies the APK bytes to `<filesRoot>/apps/<packageId>.apk`
+     *    (= `data/data/files/apps/<packageId>.apk`).
+     * 2. Creates the standard directory structure directly under
+     *    `<filesRoot>/<packageId>/` (= `data/data/files/<packageId>/`):
+     *    `files/`, `cache/`, `databases/`, `shared_prefs/`.
      * 3. Creates the mod-layers directory `<filesRoot>/<packageId>/mods/`.
+     * 4. Writes an [INSTALL_MARKER] file so [listInstalledPackages] can
+     *    reliably identify directories created by this service.
      *
      * @param packageId  Android package name, e.g. `"com.example.game"`
      * @param apkStream  raw bytes of the APK file

@@ -169,7 +169,7 @@ class AppInstallManagerServiceTest {
     @Test
     fun `dataDataRoot returns expected path`() {
         val svc = service()
-        val expected = "${tmp.root.absolutePath}/com.example.game/data/data/com.example.game"
+        val expected = "${tmp.root.absolutePath}/com.example.game"
         assertEquals(expected, svc.dataDataRoot("com.example.game"))
     }
 
