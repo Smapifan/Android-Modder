@@ -198,11 +198,11 @@ has_gradle_task() {
   local task_file
   task_file="$(mktemp)"
 
-  if ! ./gradlew --no-daemon -q tasks --all >"$task_file" 2>/dev/null; then
-    ./gradlew --no-daemon tasks --all >"$task_file" 2>/dev/null || {
-      rm -f "$task_file"
-      return 1
-    }
+  if ! gradle_retry tasks --all >"$task_file" 2>&1; then
+    log_warn "Could not enumerate Gradle tasks (./gradlew tasks --all failed). Output:"
+    cat "$task_file" >&2 || true
+    rm -f "$task_file"
+    return 1
   fi
 
   if awk 'match($0, /^[[:space:]]*([[:alnum:]_:-]+)[[:space:]]+-[[:space:]]+/, a) { print a[1] }' "$task_file" | grep -Fxq "$task"; then
@@ -234,70 +234,79 @@ install_best_build_tools() {
 }
 
 run_tests_non_blocking() {
-  local rc=0
-  if has_gradle_task "testDebugUnitTest"; then
-    if try_gradle_task "testDebugUnitTest"; then
+  local has_rc=0 try_rc=0
+
+  has_gradle_task "testDebugUnitTest"
+  has_rc=$?
+  if [[ $has_rc -eq 0 || $has_rc -eq 1 ]]; then
+    try_gradle_task "testDebugUnitTest"
+    try_rc=$?
+    if [[ $try_rc -eq 0 ]]; then
       return 0
+    elif [[ $try_rc -eq 1 ]]; then
+      log_error "testDebugUnitTest failed."
+      return 1
     fi
-    log_error "testDebugUnitTest failed."
-    return 1
-  else
-    rc=$?
+    # try_rc == 2: task not found; fall through to "test"
   fi
 
-  if [[ $rc -eq 2 ]]; then
-    log_warn "testDebugUnitTest task not found; trying test."
-  else
-    log_warn "Could not enumerate Gradle tasks for testDebugUnitTest; trying test."
+  if [[ $has_rc -eq 2 || $has_rc -eq 1 ]]; then
+    if [[ $has_rc -eq 2 ]]; then
+      log_warn "testDebugUnitTest task not found; trying test."
+    else
+      log_warn "Could not enumerate Gradle tasks for testDebugUnitTest; trying test."
+    fi
   fi
 
-  if has_gradle_task "test"; then
-    if ! try_gradle_task "test"; then
+  has_gradle_task "test"
+  has_rc=$?
+  if [[ $has_rc -eq 0 || $has_rc -eq 1 ]]; then
+    try_gradle_task "test"
+    try_rc=$?
+    if [[ $try_rc -eq 0 ]]; then
+      return 0
+    elif [[ $try_rc -eq 1 ]]; then
       log_error "test failed."
       return 1
     fi
-  else
-    rc=$?
-    if [[ $rc -eq 2 ]]; then
-      log_warn "No unit test task found; continuing."
-    else
-      log_error "Could not enumerate Gradle tasks for test."
-      return 1
-    fi
+    # try_rc == 2: task not found; fall through
+  fi
+
+  if [[ $has_rc -eq 2 ]]; then
+    log_warn "No unit test task found; continuing."
+  elif [[ $has_rc -eq 1 ]]; then
+    log_warn "Could not enumerate Gradle tasks for test; continuing."
   fi
 
   return 0
 }
 
 build_artifacts_blocking() {
-  local rc=0 built_any=0
+  local has_rc=0 try_rc=0 built_any=0
 
-  if has_gradle_task "assembleRelease"; then
-    if try_gradle_task "assembleRelease"; then
+  has_gradle_task "assembleRelease"
+  has_rc=$?
+  if [[ $has_rc -eq 0 || $has_rc -eq 1 ]]; then
+    try_gradle_task "assembleRelease"
+    try_rc=$?
+    if [[ $try_rc -eq 0 ]]; then
       built_any=1
-    else
+    elif [[ $try_rc -eq 1 ]]; then
       log_error "assembleRelease failed."
       return 1
     fi
-  else
-    rc=$?
-    if [[ $rc -ne 2 ]]; then
-      log_error "Could not enumerate Gradle tasks for assembleRelease."
-      return 1
-    fi
+    # try_rc == 2: task not found; continue to assembleDebug
   fi
 
-  if has_gradle_task "assembleDebug"; then
-    if try_gradle_task "assembleDebug"; then
+  has_gradle_task "assembleDebug"
+  has_rc=$?
+  if [[ $has_rc -eq 0 || $has_rc -eq 1 ]]; then
+    try_gradle_task "assembleDebug"
+    try_rc=$?
+    if [[ $try_rc -eq 0 ]]; then
       built_any=1
-    else
+    elif [[ $try_rc -eq 1 ]]; then
       log_error "assembleDebug failed."
-      return 1
-    fi
-  else
-    rc=$?
-    if [[ $rc -ne 2 ]]; then
-      log_error "Could not enumerate Gradle tasks for assembleDebug."
       return 1
     fi
   fi
@@ -306,17 +315,17 @@ build_artifacts_blocking() {
     return 0
   fi
 
-  if has_gradle_task "distZip"; then
-    if try_gradle_task "distZip"; then
+  has_gradle_task "distZip"
+  has_rc=$?
+  if [[ $has_rc -eq 0 || $has_rc -eq 1 ]]; then
+    try_gradle_task "distZip"
+    try_rc=$?
+    if [[ $try_rc -eq 0 ]]; then
       return 0
+    elif [[ $try_rc -eq 1 ]]; then
+      log_error "distZip failed."
+      return 1
     fi
-    log_error "distZip failed."
-    return 1
-  fi
-  rc=$?
-  if [[ $rc -ne 2 ]]; then
-    log_error "Could not enumerate Gradle tasks for distZip."
-    return 1
   fi
 
   log_error "No supported build task found (assembleRelease/assembleDebug/distZip)."
