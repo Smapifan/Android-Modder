@@ -104,11 +104,16 @@ listOf("release", "debug").forEach { buildType ->
         if (name == taskName) {
             doLast {
                 val outDir = file("build/outputs/apk/$buildType")
+                if (!outDir.isDirectory) return@doLast
                 outDir.listFiles()
                     ?.filter { it.extension == "apk" }
                     ?.forEach { apk ->
                         val target = File(apk.parent, "Android-Modder-$buildType-$appVersionName.apk")
-                        if (apk.absolutePath != target.absolutePath) apk.renameTo(target)
+                        if (apk.absolutePath != target.absolutePath) {
+                            if (!apk.renameTo(target)) {
+                                logger.warn("[Android-Modder] Could not rename ${apk.name} → ${target.name}")
+                            }
+                        }
                     }
             }
         }
