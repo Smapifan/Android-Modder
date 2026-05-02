@@ -86,5 +86,46 @@ enum class DataAccessStrategy {
      * 3. Values are written to `/proc/<pid>/mem` via the shell.
      * 4. The game reads its own RAM and "sees" the patched values.
      */
-    PROCESS_MEMORY
+    PROCESS_MEMORY,
+
+    /**
+     * Store and access all game data entirely inside Android-Modder's own
+     * private files sandbox — **nothing ever leaves the app**.
+     *
+     * ✅ No root required.
+     * ✅ No external-storage permission needed.
+     * ✅ Data is never written to `/sdcard/` or any real `/data/data/<pkg>/` path.
+     *
+     * ## Virtual layout (mirrors real Android paths inside the app sandbox)
+     *
+     * ```
+     * <appFilesRoot>/
+     *   data/
+     *     data/
+     *       <packageName>/      ← virtual /data/data/<packageName>/
+     *         files/
+     *         shared_prefs/
+     *         …
+     *     <packageName>/        ← virtual /data/<packageName>/
+     * ```
+     *
+     * The in-app "root browser" ([com.smapifan.androidmodder.service.InAppBrowserService])
+     * navigates this tree so users can browse and edit save files without any
+     * special permissions.  The virtual paths (`data/data/<pkg>/…`) mirror the
+     * real Android path structure, making them instantly recognisable.
+     *
+     * ## Launch cycle
+     *
+     * Because all data lives inside the app's own files directory:
+     * - **Export**: plain Java file copy from the virtual FS directories to the
+     *   workspace — no shell command, no root.
+     * - **Import**: plain Java file copy from the workspace back to the virtual FS
+     *   directories — no shell command, no root.
+     *
+     * Use this strategy when:
+     * - The device is not rooted.
+     * - You do not need to interact with a live game process.
+     * - You want a fully self-contained, root-free experience.
+     */
+    VIRTUAL_FS
 }

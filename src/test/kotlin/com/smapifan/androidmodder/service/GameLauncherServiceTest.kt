@@ -13,6 +13,7 @@ import kotlin.io.path.createDirectories
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GameLauncherServiceTest {
@@ -685,6 +686,140 @@ class GameLauncherServiceTest {
         val patched = Files.readString(source)
         assertTrue(checkedPreStart, "Expected pre-hook verification to run")
         assertTrue(patched.contains("= 0.5"), "Code patch should have been applied before launch")
+    }
+
+    // ── VIRTUAL_FS strategy ─────────────────────────────────────────────────
+
+    private fun makeVfsService(
+        shell: FakeShellExecutor = FakeShellExecutor(),
+        vfsRoot: String
+    ): GameLauncherService {
+        val vfs = VirtualFileSystemService(appFilesRoot = vfsRoot)
+        return GameLauncherService(
+            cheats           = emptyList(),
+            workspaceService = ModWorkspaceService(),
+            cheatApplier     = CheatApplier(),
+            modLoader        = ModLoader(),
+            shell            = shell,
+            vfs              = vfs
+        )
+    }
+
+    @Test
+    fun `exportWithVirtualFs copies data data dir into workspace`() {
+        val ws      = Files.createTempDirectory("vfs-export")
+        val vfsRoot = Files.createTempDirectory("vfs-root").toString()
+        val pkg     = "com.example.game"
+
+        val service = makeVfsService(vfsRoot = vfsRoot)
+        val vfs     = VirtualFileSystemService(appFilesRoot = vfsRoot)
+
+        // Seed virtual FS with a save file at data/data/<pkg>/files/save.dat
+        vfs.writeSystemFile("data/data/$pkg/files/save.dat", "coins=50".toByteArray())
+
+        service.exportWithVirtualFs(pkg, ws)
+
+        val workspaceSave = ws
+            .resolve(pkg)
+            .resolve("internal").resolve("data").resolve("data").resolve(pkg)
+            .resolve("files").resolve("save.dat")
+        assertTrue(Files.exists(workspaceSave), "Workspace should contain the exported save file")
+        assertEquals("coins=50", Files.readString(workspaceSave))
+    }
+
+    @Test
+    fun `exportWithVirtualFs copies data dir into workspace`() {
+        val ws      = Files.createTempDirectory("vfs-export-data")
+        val vfsRoot = Files.createTempDirectory("vfs-root-data").toString()
+        val pkg     = "com.example.game"
+
+        val service = makeVfsService(vfsRoot = vfsRoot)
+        val vfs     = VirtualFileSystemService(appFilesRoot = vfsRoot)
+
+        vfs.writeSystemFile("data/$pkg/cache.db", "db".toByteArray())
+
+        service.exportWithVirtualFs(pkg, ws)
+
+        val workspaceFile = ws
+            .resolve(pkg)
+            .resolve("internal").resolve("data").resolve(pkg)
+            .resolve("cache.db")
+        assertTrue(Files.exists(workspaceFile), "Workspace should contain the exported data dir file")
+        assertEquals("db", Files.readString(workspaceFile))
+    }
+
+    @Test
+    fun `importWithVirtualFs copies workspace data back to virtual data data dir`() {
+        val ws      = Files.createTempDirectory("vfs-import")
+        val vfsRoot = Files.createTempDirectory("vfs-root-import").toString()
+        val pkg     = "com.example.game"
+
+        val service = makeVfsService(vfsRoot = vfsRoot)
+        val vfs     = VirtualFileSystemService(appFilesRoot = vfsRoot)
+
+        // Seed workspace with a patched save file
+        val wsFile = ws
+            .resolve(pkg)
+            .resolve("internal").resolve("data").resolve("data").resolve(pkg)
+            .resolve("files").resolve("save.dat")
+        wsFile.parent.createDirectories()
+        Files.writeString(wsFile, "coins=9999")
+
+        service.importWithVirtualFs(pkg, ws)
+
+        assertEquals(
+            "coins=9999",
+            vfs.readSystemFile("data/data/$pkg/files/save.dat")?.decodeToString(),
+            "Imported file should appear in the virtual FS"
+        )
+    }
+
+    @Test
+    fun `launch with VIRTUAL_FS strategy issues no shell data commands`() {
+        val fake    = FakeShellExecutor()
+        val vfsRoot = Files.createTempDirectory("vfs-launch-root").toString()
+        val ws      = Files.createTempDirectory("vfs-launch-ws")
+        val pkg     = "com.example.game"
+        val service = makeVfsService(shell = fake, vfsRoot = vfsRoot)
+
+        val config = GameLaunchConfig(
+            packageName        = pkg,
+            launchCommand      = "am start -n $pkg/.MainActivity",
+            dataAccessStrategy = DataAccessStrategy.VIRTUAL_FS,
+            importAfterExit    = false
+        )
+
+        service.launch(ws, config)
+
+        // Only the am start command should have been issued — no cp, no su, no run-as
+        val nonLaunchCommands = fake.commands.filter { !it.first.contains("am start") }
+        assertTrue(nonLaunchCommands.isEmpty(),
+            "VIRTUAL_FS strategy must not issue any shell data commands; got: $nonLaunchCommands")
+    }
+
+    @Test
+    fun `launch with VIRTUAL_FS strategy round-trips save data through workspace`() {
+        val fake    = FakeShellExecutor()
+        val vfsRoot = Files.createTempDirectory("vfs-roundtrip-root").toString()
+        val ws      = Files.createTempDirectory("vfs-roundtrip-ws")
+        val pkg     = "com.example.game"
+        val vfs     = VirtualFileSystemService(appFilesRoot = vfsRoot)
+        val service = makeVfsService(shell = fake, vfsRoot = vfsRoot)
+
+        // Seed virtual FS
+        vfs.writeSystemFile("data/data/$pkg/files/save.dat", "coins=10".toByteArray())
+
+        val config = GameLaunchConfig(
+            packageName        = pkg,
+            launchCommand      = "am start -n $pkg/.MainActivity",
+            dataAccessStrategy = DataAccessStrategy.VIRTUAL_FS,
+            importAfterExit    = true
+        )
+        service.launch(ws, config)
+
+        // Data should still be present in virtual FS after round-trip
+        assertNotNull(vfs.readSystemFile("data/data/$pkg/files/save.dat"),
+            "Save file should still exist in virtual FS after round-trip")
     }
 
 }

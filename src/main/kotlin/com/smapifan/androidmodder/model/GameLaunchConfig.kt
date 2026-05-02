@@ -50,6 +50,7 @@ data class GameLaunchConfig(
      * - [DataAccessStrategy.RUN_AS]           – `run-as <pkg>`, no root, debuggable apps only.
      * - [DataAccessStrategy.ROOT]             – `su -c "cp …"`, root required, any app.
      * - [DataAccessStrategy.PROCESS_MEMORY]   – `/proc/<pid>/mem`, root/ptrace, live injection.
+     * - [DataAccessStrategy.VIRTUAL_FS]       – in-app sandbox only; no root, no external storage.
      */
     val dataAccessStrategy: DataAccessStrategy = DataAccessStrategy.EXTERNAL_STORAGE,
 

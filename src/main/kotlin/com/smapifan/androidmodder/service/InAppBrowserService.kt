@@ -151,4 +151,146 @@ class InAppBrowserService(
             }
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System-path "root browser"  (VIRTUAL_FS — data/ and data/data/ layout)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Lists entries at [systemPath] inside the virtual system tree.
+     *
+     * [systemPath] is a path **relative to the app's files root** that mirrors
+     * the real Android directory hierarchy, for example:
+     *
+     * | systemPath                        | Equivalent real path              |
+     * |-----------------------------------|-----------------------------------|
+     * | `""` or `"/"`                     | `<appFilesRoot>/`                 |
+     * | `"data"`                          | virtual `/data/`                  |
+     * | `"data/data"`                     | virtual `/data/data/`             |
+     * | `"data/data/com.example.pkg"`     | virtual `/data/data/com.example.pkg/` |
+     * | `"data/data/com.example.pkg/files"` | files sub-directory             |
+     *
+     * Directories are listed before files; both groups are sorted alphabetically.
+     *
+     * All data is confined to Android-Modder's own sandbox; no root access is
+     * needed.
+     *
+     * @param systemPath path relative to the app files root (default: root)
+     * @return sorted list of [BrowserEntry] items; empty if the path does not exist
+     */
+    fun browseSystemPath(systemPath: String = ""): List<BrowserEntry> =
+        vfs.listAtSystemPath(systemPath)
+            .map { entry ->
+                BrowserEntry(
+                    name        = entry.name,
+                    virtualPath = entry.path,
+                    isDirectory = entry.isDirectory,
+                    sizeBytes   = entry.sizeBytes,
+                    packageName = extractPackageNameFromSystemPath(entry.path)
+                )
+            }
+            .sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+
+    /**
+     * Returns a flat list of all packages that have a virtual `data/data/`
+     * directory in the app sandbox.
+     *
+     * @return sorted list of package name strings
+     */
+    fun listSystemPackages(): List<String> = vfs.listSystemPackages()
+
+    /**
+     * Reads the content of the file at [systemPath] (relative to the app files
+     * root) as a UTF-8 string.
+     *
+     * @return file content string, or `null` if the file does not exist
+     */
+    fun readSystemTextFile(systemPath: String): String? =
+        vfs.readSystemFile(systemPath)?.decodeToString()
+
+    /**
+     * Reads the content of the file at [systemPath] as raw bytes.
+     *
+     * @return file content bytes, or `null` if the file does not exist
+     */
+    fun readSystemBinaryFile(systemPath: String): ByteArray? =
+        vfs.readSystemFile(systemPath)
+
+    /**
+     * Writes [text] (UTF-8) to the file at [systemPath] (relative to the app
+     * files root).
+     *
+     * Parent directories are created automatically.
+     *
+     * @return `true` if the write succeeded
+     */
+    fun writeSystemTextFile(systemPath: String, text: String): Boolean =
+        vfs.writeSystemFile(systemPath, text.toByteArray(Charsets.UTF_8))
+
+    /**
+     * Writes [bytes] to the file at [systemPath] (relative to the app files root).
+     *
+     * Parent directories are created automatically.
+     *
+     * @return `true` if the write succeeded
+     */
+    fun writeSystemBinaryFile(systemPath: String, bytes: ByteArray): Boolean =
+        vfs.writeSystemFile(systemPath, bytes)
+
+    /**
+     * Deletes the file or directory tree at [systemPath] (relative to the app
+     * files root).
+     *
+     * @return `true` if the path no longer exists after the call
+     */
+    fun deleteAtSystemPath(systemPath: String): Boolean =
+        vfs.deleteAtSystemPath(systemPath)
+
+    /**
+     * Builds a human-readable directory tree for the virtual system tree
+     * starting at [systemPath].
+     *
+     * Example output (starting at `"data/data/com.example.pkg"`):
+     * ```
+     * 📁 files
+     *   📄 save.dat  (1024 bytes)
+     * 📁 shared_prefs
+     *   📄 prefs.xml  (512 bytes)
+     * ```
+     *
+     * All paths are confined to the app's own sandbox.
+     *
+     * @param systemPath starting path relative to the app files root (default: root)
+     * @param indent     current indentation level (used for recursive calls)
+     * @return multi-line string representation of the directory tree
+     */
+    fun buildSystemTree(systemPath: String = "", indent: Int = 0): String = buildString {
+        for (entry in browseSystemPath(systemPath)) {
+            val prefix = "  ".repeat(indent) + if (entry.isDirectory) "\uD83D\uDCC1 " else "\uD83D\uDCC4 "
+            val size   = if (!entry.isDirectory) "  (${entry.sizeBytes} bytes)" else ""
+            appendLine("$prefix${entry.name}$size")
+            if (entry.isDirectory) {
+                append(buildSystemTree(entry.virtualPath, indent + 1))
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Private helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Extracts the guest package name from a system path such as
+     * `data/data/com.example.pkg/files` → `"com.example.pkg"`.
+     *
+     * Returns an empty string for paths that do not contain a package segment.
+     */
+    private fun extractPackageNameFromSystemPath(systemPath: String): String {
+        val parts = systemPath.trimStart('/').split('/')
+        return when {
+            parts.size >= 3 && parts[0] == "data" && parts[1] == "data" -> parts[2]
+            parts.size >= 2 && parts[0] == "data"                       -> parts[1]
+            else                                                         -> ""
+        }
+    }
 }

@@ -239,4 +239,165 @@ class VirtualFileSystemServiceTest {
         val destDir = File(tempDir, "dest")
         assertFalse(service().exportToDirectory("com.not.installed", destDir))
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  virtualDataDataRoot / virtualDataRootForApp
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `virtualDataDataRoot returns correct path`() {
+        val svc = service()
+        assertEquals(
+            "${tempDir.absolutePath}/data/data/com.example.game",
+            svc.virtualDataDataRoot("com.example.game")
+        )
+    }
+
+    @Test
+    fun `virtualDataRootForApp returns correct path`() {
+        val svc = service()
+        assertEquals(
+            "${tempDir.absolutePath}/data/com.example.game",
+            svc.virtualDataRootForApp("com.example.game")
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  ensureVirtualSystemDirs
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `ensureVirtualSystemDirs creates both directories`() {
+        val svc = service()
+        val pkg = "com.example.game"
+        assertTrue(svc.ensureVirtualSystemDirs(pkg))
+        assertTrue(File(svc.virtualDataDataRoot(pkg)).isDirectory)
+        assertTrue(File(svc.virtualDataRootForApp(pkg)).isDirectory)
+    }
+
+    @Test
+    fun `ensureVirtualSystemDirs returns true when directories already exist`() {
+        val svc = service()
+        val pkg = "com.example.game"
+        svc.ensureVirtualSystemDirs(pkg)
+        assertTrue(svc.ensureVirtualSystemDirs(pkg))
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  listSystemPackages
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `listSystemPackages returns empty list when no packages exist`() {
+        assertEquals(emptyList(), service().listSystemPackages())
+    }
+
+    @Test
+    fun `listSystemPackages returns sorted packages from data data directory`() {
+        val svc = service()
+        svc.ensureVirtualSystemDirs("com.z.last")
+        svc.ensureVirtualSystemDirs("com.a.first")
+        svc.ensureVirtualSystemDirs("com.m.middle")
+
+        val packages = svc.listSystemPackages()
+        assertEquals(listOf("com.a.first", "com.m.middle", "com.z.last"), packages)
+    }
+
+    @Test
+    fun `listSystemPackages ignores directories without dots`() {
+        val svc = service()
+        File(tempDir, "data/data/notapackage").mkdirs()
+        svc.ensureVirtualSystemDirs("com.real.pkg")
+
+        val packages = svc.listSystemPackages()
+        assertEquals(listOf("com.real.pkg"), packages)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  listAtSystemPath
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `listAtSystemPath returns entries at data data pkg directory`() {
+        val svc = service()
+        val pkg = "com.example.game"
+        svc.writeSystemFile("data/data/$pkg/files/save.dat", "data".toByteArray())
+
+        val entries = svc.listAtSystemPath("data/data/$pkg")
+        assertEquals(1, entries.size)
+        assertEquals("files", entries[0].name)
+        assertTrue(entries[0].isDirectory)
+    }
+
+    @Test
+    fun `listAtSystemPath returns empty list for non-existent path`() {
+        assertTrue(service().listAtSystemPath("data/data/no.such.pkg").isEmpty())
+    }
+
+    @Test
+    fun `listAtSystemPath entry path is relative to appFilesRoot`() {
+        val svc = service()
+        svc.writeSystemFile("data/data/com.example.game/save.dat", "x".toByteArray())
+        val entries = svc.listAtSystemPath("data/data/com.example.game")
+        assertEquals("data/data/com.example.game/save.dat", entries[0].path)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  writeSystemFile / readSystemFile
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `writeSystemFile creates file and readSystemFile returns content`() {
+        val svc  = service()
+        val path = "data/data/com.example.game/files/save.dat"
+        assertTrue(svc.writeSystemFile(path, "coins=42".toByteArray()))
+        assertEquals("coins=42", svc.readSystemFile(path)?.decodeToString())
+    }
+
+    @Test
+    fun `writeSystemFile creates parent directories automatically`() {
+        val svc = service()
+        assertTrue(svc.writeSystemFile("data/data/com.example.game/a/b/deep.txt", "hi".toByteArray()))
+        assertNotNull(svc.readSystemFile("data/data/com.example.game/a/b/deep.txt"))
+    }
+
+    @Test
+    fun `readSystemFile returns null for non-existent path`() {
+        assertNull(service().readSystemFile("data/data/com.example.game/missing.dat"))
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  deleteAtSystemPath / existsAtSystemPath
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `deleteAtSystemPath removes a file`() {
+        val svc  = service()
+        val path = "data/data/com.example.game/del.dat"
+        svc.writeSystemFile(path, ByteArray(0))
+        assertTrue(svc.deleteAtSystemPath(path))
+        assertFalse(svc.existsAtSystemPath(path))
+    }
+
+    @Test
+    fun `deleteAtSystemPath removes a directory tree`() {
+        val svc = service()
+        svc.writeSystemFile("data/data/com.example.game/dir/a.dat", ByteArray(0))
+        svc.writeSystemFile("data/data/com.example.game/dir/b.dat", ByteArray(0))
+        assertTrue(svc.deleteAtSystemPath("data/data/com.example.game/dir"))
+        assertFalse(svc.existsAtSystemPath("data/data/com.example.game/dir"))
+    }
+
+    @Test
+    fun `existsAtSystemPath returns true for written file`() {
+        val svc  = service()
+        val path = "data/data/com.example.game/check.dat"
+        svc.writeSystemFile(path, ByteArray(0))
+        assertTrue(svc.existsAtSystemPath(path))
+    }
+
+    @Test
+    fun `existsAtSystemPath returns false for missing path`() {
+        assertFalse(service().existsAtSystemPath("data/data/com.example.game/no.dat"))
+    }
 }

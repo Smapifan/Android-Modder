@@ -6,6 +6,7 @@ import com.smapifan.androidmodder.model.GameLaunchConfig
 import com.smapifan.androidmodder.model.ModDefinition
 import com.smapifan.androidmodder.model.SaveDataAction
 import com.smapifan.androidmodder.model.TriggerMode
+import java.io.File
 import java.nio.file.Path
 
 /**
@@ -74,7 +75,7 @@ import java.nio.file.Path
  * @param processMemory    optional live-memory injection service; used when
  *                         [DataAccessStrategy.PROCESS_MEMORY] is selected
  */
-class GameLauncherService(
+open class GameLauncherService(
     private val cheats: List<CheatDefinition> = emptyList(),
     private val workspaceService: ModWorkspaceService = ModWorkspaceService(),
     private val cheatApplier: CheatApplier = CheatApplier(),
@@ -82,7 +83,8 @@ class GameLauncherService(
     private val shell: ShellExecutor = ShellExecutor(),
     private val overlayService: ModOverlayService? = null,
     private val processMemory: ProcessMemoryService? = null,
-    private val codePatchLoader: CodePatchLoader = CodePatchLoader()
+    private val codePatchLoader: CodePatchLoader = CodePatchLoader(),
+    private val vfs: VirtualFileSystemService = VirtualFileSystemService()
 ) {
 
     /**
@@ -100,7 +102,7 @@ class GameLauncherService(
      * @param postHooks  optional callbacks run after game exit, before import
      * @return the [ShellResult] of the `am start` command
      */
-    fun launch(
+    open fun launch(
         workspace: Path,
         config: GameLaunchConfig,
         preHooks: List<() -> Unit> = emptyList(),
@@ -198,6 +200,8 @@ class GameLauncherService(
      * - [DataAccessStrategy.RUN_AS]           – uses `run-as <pkg>` to copy `/data/data/<pkg>/`
      * - [DataAccessStrategy.ROOT]             – uses `su` to copy `/data/data/<pkg>/`
      * - [DataAccessStrategy.PROCESS_MEMORY]   – only exports external storage (memory is live)
+     * - [DataAccessStrategy.VIRTUAL_FS]       – copies from the app-sandbox virtual directories
+     *                                           (no shell, no root, nothing leaves the app)
      */
     private fun exportData(
         strategy: DataAccessStrategy,
@@ -221,6 +225,10 @@ class GameLauncherService(
                 exportInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
                 workspaceService.exportExternalData(workspace, sdcard, config.packageName)
             }
+            DataAccessStrategy.VIRTUAL_FS -> {
+                // Pure in-sandbox copy — no shell, no root, nothing leaves the app
+                exportWithVirtualFs(config.packageName, workspace)
+            }
         }
     }
 
@@ -231,6 +239,8 @@ class GameLauncherService(
      * - [DataAccessStrategy.RUN_AS]           – uses `run-as <pkg>` to write `/data/data/<pkg>/`
      * - [DataAccessStrategy.ROOT]             – uses `su` to write `/data/data/<pkg>/`
      * - [DataAccessStrategy.PROCESS_MEMORY]   – only imports external storage
+     * - [DataAccessStrategy.VIRTUAL_FS]       – copies back to the app-sandbox virtual directories
+     *                                           (no shell, no root, nothing leaves the app)
      */
     private fun importData(
         strategy: DataAccessStrategy,
@@ -250,6 +260,10 @@ class GameLauncherService(
             DataAccessStrategy.ROOT -> {
                 importInternalWithRoot(config.packageName, config.deviceDataRoot, workspace)
                 workspaceService.importExternalData(workspace, sdcard, config.packageName)
+            }
+            DataAccessStrategy.VIRTUAL_FS -> {
+                // Pure in-sandbox copy — no shell, no root, nothing leaves the app
+                importWithVirtualFs(config.packageName, workspace)
             }
         }
     }
@@ -393,6 +407,64 @@ class GameLauncherService(
         val secondarySrc = appSrc.resolve("internal").resolve("data").resolve(packageName)
         if (secondarySrc.toFile().isDirectory) {
             shell.execute("cp -r $secondarySrc/. $deviceDataRoot/$packageName/", asRoot = true)
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Virtual-FS helpers (VIRTUAL_FS strategy — pure in-sandbox, no root)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Exports game data from the virtual FS into the workspace.
+     *
+     * Copies:
+     * - `<vfsRoot>/data/data/<pkg>/` → `<workspace>/<pkg>/internal/data/data/<pkg>/`
+     * - `<vfsRoot>/data/<pkg>/`      → `<workspace>/<pkg>/internal/data/<pkg>/`
+     *
+     * No shell command is used; everything is a plain Java file copy within the
+     * app's own sandbox.  Never reads from `/sdcard/` or real `/data/data/` paths.
+     */
+    internal fun exportWithVirtualFs(packageName: String, workspace: Path) {
+        val dataDataSrc = File(vfs.virtualDataDataRoot(packageName))
+        if (dataDataSrc.isDirectory) {
+            val dest = workspaceService.appWorkspace(workspace, packageName)
+                .resolve("internal").resolve("data").resolve("data").resolve(packageName)
+            dest.toFile().mkdirs()
+            dataDataSrc.copyRecursively(dest.toFile(), overwrite = true)
+        }
+
+        val dataSrc = File(vfs.virtualDataRootForApp(packageName))
+        if (dataSrc.isDirectory) {
+            val dest = workspaceService.appWorkspace(workspace, packageName)
+                .resolve("internal").resolve("data").resolve(packageName)
+            dest.toFile().mkdirs()
+            dataSrc.copyRecursively(dest.toFile(), overwrite = true)
+        }
+    }
+
+    /**
+     * Imports workspace data back into the virtual FS.
+     *
+     * Copies:
+     * - `<workspace>/<pkg>/internal/data/data/<pkg>/` → `<vfsRoot>/data/data/<pkg>/`
+     * - `<workspace>/<pkg>/internal/data/<pkg>/`      → `<vfsRoot>/data/<pkg>/`
+     *
+     * No shell command is used; everything is a plain Java file copy within the
+     * app's own sandbox.  Never writes to `/sdcard/` or real `/data/data/` paths.
+     */
+    internal fun importWithVirtualFs(packageName: String, workspace: Path) {
+        val primarySrc = workspaceService.appWorkspace(workspace, packageName)
+            .resolve("internal").resolve("data").resolve("data").resolve(packageName)
+        if (primarySrc.toFile().isDirectory) {
+            vfs.ensureVirtualSystemDirs(packageName)
+            primarySrc.toFile().copyRecursively(File(vfs.virtualDataDataRoot(packageName)), overwrite = true)
+        }
+
+        val secondarySrc = workspaceService.appWorkspace(workspace, packageName)
+            .resolve("internal").resolve("data").resolve(packageName)
+        if (secondarySrc.toFile().isDirectory) {
+            vfs.ensureVirtualSystemDirs(packageName)
+            secondarySrc.toFile().copyRecursively(File(vfs.virtualDataRootForApp(packageName)), overwrite = true)
         }
     }
 
