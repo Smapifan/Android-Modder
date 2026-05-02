@@ -1,3 +1,6 @@
+// Enum of arithmetic operations a cheat can apply to a save-file field (ADD, SUBTRACT, SET).
+// Aufzählung der arithmetischen Operationen, die ein Cheat auf ein Spielstand-Feld anwenden kann (ADD, SUBTRACT, SET).
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

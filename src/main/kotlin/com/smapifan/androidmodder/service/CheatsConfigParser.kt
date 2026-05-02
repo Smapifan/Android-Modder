@@ -1,3 +1,6 @@
+// Parses a JSON array of CheatDefinition objects from a cheats configuration file.
+// Parst ein JSON-Array von CheatDefinition-Objekten aus einer Cheat-Konfigurationsdatei.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition

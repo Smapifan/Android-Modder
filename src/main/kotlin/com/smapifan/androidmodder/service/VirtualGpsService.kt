@@ -1,3 +1,6 @@
+// Provides an isolated virtual GPS location per guest-app session without affecting the real device GPS.
+// Stellt eine isolierte virtuelle GPS-Position pro Gast-App-Sitzung bereit, ohne die echte Geräte-GPS zu beeinflussen.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.VirtualLocation

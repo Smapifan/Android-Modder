@@ -1,3 +1,6 @@
+// Executes shell commands via ProcessBuilder with optional root escalation through su -c.
+// Führt Shell-Befehle über ProcessBuilder aus, optional mit Root-Eskalation über su -c.
+
 package com.smapifan.androidmodder.service
 
 /**

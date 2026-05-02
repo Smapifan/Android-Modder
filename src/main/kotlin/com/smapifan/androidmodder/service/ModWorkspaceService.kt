@@ -1,3 +1,6 @@
+// Manages the workspace directory, handles app data export/import and discovers mod and extension files.
+// Verwaltet das Workspace-Verzeichnis, exportiert/importiert App-Daten und entdeckt Mod- und Erweiterungsdateien.
+
 package com.smapifan.androidmodder.service
 
 import java.io.BufferedInputStream

@@ -1,3 +1,6 @@
+// Describes a single button in the floating overlay HUD that triggers a subset of mod patches on tap.
+// Beschreibt eine einzelne Schaltfläche im schwebenden Overlay-HUD, die beim Tippen eine Teilmenge von Mod-Patches auslöst.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

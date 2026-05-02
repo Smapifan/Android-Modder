@@ -1,3 +1,6 @@
+// Orchestrates the full cheat/mod wrapper launch cycle (export → patch → launch → overlay → import) for any Android app.
+// Orchestriert den vollständigen Cheat-/Mod-Wrapper-Startzyklus (Export → Patch → Start → Overlay → Import) für beliebige Android-Apps.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition

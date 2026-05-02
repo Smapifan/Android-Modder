@@ -1,3 +1,6 @@
+// Executes shell commands as a target app's own UID via run-as (no root required for debuggable apps).
+// Führt Shell-Befehle als eigene UID der Ziel-App über run-as aus (kein Root für debuggable Apps erforderlich).
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

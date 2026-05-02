@@ -1,3 +1,6 @@
+// Parses the curated app catalog JSON and provides lookup and age-filter helper methods.
+// Parst den kuratierten App-Katalog-JSON und stellt Such- und Altersfilter-Hilfsmethoden bereit.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.AppEntry

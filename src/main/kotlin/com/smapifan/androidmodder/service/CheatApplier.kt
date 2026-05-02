@@ -1,3 +1,6 @@
+// Applies cheat operations (ADD/SUBTRACT/SET) to key=value save files copied into the workspace.
+// Wendet Cheat-Operationen (ADD/SUBTRACT/SET) auf Schlüssel=Wert-Spielstanddateien im Workspace an.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition

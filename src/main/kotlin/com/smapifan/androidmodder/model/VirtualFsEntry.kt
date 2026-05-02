@@ -1,3 +1,6 @@
+// Represents a single file or directory entry inside the in-app virtual filesystem.
+// Repräsentiert einen einzelnen Datei- oder Verzeichniseintrag im virtuellen In-App-Dateisystem.
+
 package com.smapifan.androidmodder.model
 
 /**

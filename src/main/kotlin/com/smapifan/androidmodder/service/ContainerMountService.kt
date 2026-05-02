@@ -1,3 +1,6 @@
+// Redirects an app's save-data directories into the workspace via kernel bind-mounts inside an Android Multi-User container.
+// Leitet die Spielstandverzeichnisse einer App über Kernel-Bind-Mounts in den Workspace um, innerhalb eines Android-Multi-User-Containers.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -1,3 +1,6 @@
+// Enum controlling when a mod's patches are applied: on game launch, on user demand, or on autosave interval.
+// Aufzählung, die steuert, wann Mod-Patches angewendet werden: beim Spielstart, auf Benutzeranfrage oder im Autosave-Intervall.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

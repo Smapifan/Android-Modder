@@ -1,3 +1,6 @@
+// Enum defining how the launcher reads and writes an app's save data (external storage, run-as, root, memory, or virtual FS).
+// Aufzählung, die festlegt, wie der Launcher App-Spielstanddaten liest und schreibt (externer Speicher, run-as, Root, Speicher oder virtuelles FS).
+
 package com.smapifan.androidmodder.model
 
 /**

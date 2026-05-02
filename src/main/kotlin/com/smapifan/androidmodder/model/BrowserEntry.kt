@@ -1,3 +1,6 @@
+// Represents a single file or directory entry in the in-app file browser.
+// Repräsentiert einen einzelnen Datei- oder Verzeichniseintrag im In-App-Dateibrowser.
+
 package com.smapifan.androidmodder.model
 
 /**

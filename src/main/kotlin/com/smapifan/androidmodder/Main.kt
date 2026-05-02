@@ -1,3 +1,6 @@
+// CLI entry point: parses arguments, runs the workspace pipeline and prints status.
+// CLI-Einstiegspunkt: parst Argumente, führt die Workspace-Pipeline aus und gibt Status aus.
+
 package com.smapifan.androidmodder
 
 import com.smapifan.androidmodder.model.TriggerMode

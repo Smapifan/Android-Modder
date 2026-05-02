@@ -1,3 +1,6 @@
+// Registry of bundled VM system apps and runtime-registered user-supplied APKs with category metadata.
+// Registrierung gebündelter VM-System-Apps und zur Laufzeit registrierter benutzerdefinierter APKs mit Kategorie-Metadaten.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

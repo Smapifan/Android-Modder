@@ -1,3 +1,6 @@
+// Data class for a virtual GPS location (latitude, longitude, altitude) used with VirtualGpsService.
+// Datenklasse für eine virtuelle GPS-Position (Breite, Länge, Höhe) zur Verwendung mit dem VirtualGpsService.
+
 package com.smapifan.androidmodder.model
 
 /**

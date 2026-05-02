@@ -1,3 +1,6 @@
+// Provides an isolated virtual clock per guest-app session with configurable time offset, fixed time and timezone.
+// Stellt eine isolierte virtuelle Uhr pro Gast-App-Sitzung mit konfigurierbarem Zeitversatz, fester Zeit und Zeitzone bereit.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

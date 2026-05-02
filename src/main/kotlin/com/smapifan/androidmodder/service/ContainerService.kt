@@ -1,3 +1,6 @@
+// Manages lightweight Android Multi-User containers for isolated app execution without root on the host.
+// Verwaltet leichtgewichtige Android-Multi-User-Container für isolierte App-Ausführung ohne Root auf dem Host.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

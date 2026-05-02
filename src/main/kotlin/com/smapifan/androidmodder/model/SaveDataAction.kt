@@ -1,3 +1,6 @@
+// Enum for save-data operations (EXPORT/IMPORT) that a mod can perform on external storage.
+// Aufzählung der Spielstand-Operationen (EXPORT/IMPORT), die eine Mod auf dem externen Speicher ausführen kann.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

@@ -1,3 +1,6 @@
+// Configuration for launching a game through the Android-Modder launcher, including data-access strategy and optional container ID.
+// Konfiguration zum Starten eines Spiels über den Android-Modder-Launcher, inkl. Datenzugriffsstrategie und optionaler Container-ID.
+
 package com.smapifan.androidmodder.model
 
 /**

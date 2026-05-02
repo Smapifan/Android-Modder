@@ -1,3 +1,6 @@
+// In-app file browser and manager for navigating and modifying guest-app data via the virtual filesystem.
+// In-App-Dateibrowser und -Manager zum Navigieren und Ändern von Gast-App-Daten über das virtuelle Dateisystem.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.BrowserEntry

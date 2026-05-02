@@ -1,3 +1,6 @@
+// Read-only analytics over process memory: region summaries, multi-type value search and progressive scan snapshots.
+// Nur-Lese-Analyse des Prozessarbeitsspeichers: Regionsübersichten, Multi-Typ-Wertsuche und progressive Scan-Snapshots.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -1,3 +1,6 @@
+// Discovers, loads and applies JSON *.codepatch files from the workspace to their target game files.
+// Entdeckt, lädt und wendet JSON-*.codepatch-Dateien aus dem Workspace auf die zugehörigen Spieldateien an.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CodePatchConfig

@@ -40,8 +40,11 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (signingReady) {
+        // Only create the signing config when all credentials are present.
+        // AGP 8.x auto-links any config named "release" to the release build type,
+        // so an empty config would still cause NPE at package time.
+        if (signingReady) {
+            create("release") {
                 storeFile = file(storeFilePath)
                 this.storePassword = storePassword
                 this.keyAlias = keyAlias
@@ -60,6 +63,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Sign debug builds with the same JKS when credentials are available,
+            // so both build types share one certificate and can upgrade each other.
+            if (signingReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -85,7 +95,14 @@ android {
     }
 }
 
-
+// Rename APK outputs to "Android-Modder-{buildType}-{versionName}.apk" for easy identification.
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("Android-Modder-${variant.buildType}-$appVersionName.apk")
+        }
+    }
+}
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")

@@ -1,3 +1,6 @@
+// Main Android UI activity providing a tabbed interface for mod management, app installation, file browsing and settings.
+// Haupt-Android-UI-Aktivität mit Tab-Oberfläche für Mod-Verwaltung, App-Installation, Dateibrowsing und Einstellungen.
+
 package com.smapifan.androidmodder.ui
 
 import android.app.AlertDialog
