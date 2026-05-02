@@ -96,10 +96,21 @@ android {
 }
 
 // Rename APK outputs to "Android-Modder-{buildType}-{versionName}.apk" for easy identification.
-androidComponents {
-    onVariants { variant ->
-        variant.outputs.forEach { output ->
-            output.outputFileName.set("Android-Modder-${variant.buildType}-$appVersionName.apk")
+// VariantOutput.outputFileName was removed from the AGP 8.x public API, so we rename on disk
+// inside a doLast hook on each assemble task instead.
+listOf("release", "debug").forEach { buildType ->
+    val taskName = "assemble${buildType.replaceFirstChar { it.uppercaseChar() }}"
+    tasks.configureEach {
+        if (name == taskName) {
+            doLast {
+                val outDir = file("build/outputs/apk/$buildType")
+                outDir.listFiles()
+                    ?.filter { it.extension == "apk" }
+                    ?.forEach { apk ->
+                        val target = File(apk.parent, "Android-Modder-$buildType-$appVersionName.apk")
+                        if (apk.absolutePath != target.absolutePath) apk.renameTo(target)
+                    }
+            }
         }
     }
 }
