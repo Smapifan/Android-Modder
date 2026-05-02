@@ -20,6 +20,11 @@ val keyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("AND
 val appVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toIntOrNull() ?: 1
 val appVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
 val forceUnsignedRelease = (System.getenv("FORCE_UNSIGNED_RELEASE") ?: "0") == "1"
+val signingReady = !forceUnsignedRelease &&
+    storeFilePath.isNotBlank() &&
+    !storePassword.isNullOrBlank() &&
+    !keyAlias.isNullOrBlank() &&
+    !keyPassword.isNullOrBlank()
 
 android {
     namespace = "com.smapifan.androidmodder"
@@ -36,7 +41,7 @@ android {
 
     signingConfigs {
         create("release") {
-            if (storeFilePath.isNotBlank()) {
+            if (signingReady) {
                 storeFile = file(storeFilePath)
                 this.storePassword = storePassword
                 this.keyAlias = keyAlias
@@ -48,7 +53,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (!forceUnsignedRelease && storeFilePath.isNotBlank()) {
+            if (signingReady) {
                 signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(
