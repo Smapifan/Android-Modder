@@ -193,6 +193,151 @@ class VirtualFileSystemService(
     //  Bulk import / export
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System-path directories  (VIRTUAL_FS strategy)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the path that mirrors `/data/data/<packageName>/` inside the
+     * app's own sandbox:
+     * `<appFilesRoot>/data/data/<packageName>`
+     *
+     * Used exclusively by the [com.smapifan.androidmodder.model.DataAccessStrategy.VIRTUAL_FS]
+     * strategy so all game data stays within Android-Modder's private files directory.
+     */
+    fun virtualDataDataRoot(packageName: String): String =
+        "$appFilesRoot/data/data/$packageName"
+
+    /**
+     * Returns the path that mirrors `/data/<packageName>/` inside the app's
+     * own sandbox:
+     * `<appFilesRoot>/data/<packageName>`
+     *
+     * Used exclusively by the [com.smapifan.androidmodder.model.DataAccessStrategy.VIRTUAL_FS]
+     * strategy so all game data stays within Android-Modder's private files directory.
+     */
+    fun virtualDataRootForApp(packageName: String): String =
+        "$appFilesRoot/data/$packageName"
+
+    /**
+     * Ensures both virtual system directories for [packageName] exist:
+     * - `<appFilesRoot>/data/data/<packageName>/`
+     * - `<appFilesRoot>/data/<packageName>/`
+     *
+     * @return `true` if both directories exist or were created successfully
+     */
+    fun ensureVirtualSystemDirs(packageName: String): Boolean {
+        val dataDataDir = File(virtualDataDataRoot(packageName))
+        val dataDir     = File(virtualDataRootForApp(packageName))
+        return (dataDataDir.exists() || dataDataDir.mkdirs()) &&
+               (dataDir.exists() || dataDir.mkdirs())
+    }
+
+    /**
+     * Lists all guest packages that have a virtual `data/data/` directory.
+     *
+     * Scans `<appFilesRoot>/data/data/` and returns the package names found
+     * there (directories whose names contain a dot).
+     *
+     * @return sorted list of package names
+     */
+    fun listSystemPackages(): List<String> =
+        File("$appFilesRoot/data/data").listFiles()
+            ?.filter { it.isDirectory && it.name.contains('.') }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System-path I/O  (paths relative to appFilesRoot)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Lists entries at [systemPath] relative to [appFilesRoot].
+     *
+     * [systemPath] mirrors a real Android path, e.g.:
+     * - `""` or `"/"` → lists [appFilesRoot] itself
+     * - `"data/data"` → lists `<appFilesRoot>/data/data/`
+     * - `"data/data/com.example.pkg"` → lists the package directory
+     * - `"data/data/com.example.pkg/files"` → lists the `files/` sub-directory
+     *
+     * @return list of [VirtualFsEntry] items; empty if path does not exist or
+     *         is not a directory
+     */
+    fun listAtSystemPath(systemPath: String): List<VirtualFsEntry> {
+        val target = resolveSystemPath(systemPath)
+        if (!target.isDirectory) return emptyList()
+        val root = File(appFilesRoot)
+        return target.listFiles()?.map { f ->
+            VirtualFsEntry(
+                name        = f.name,
+                path        = f.relativeTo(root).path,
+                isDirectory = f.isDirectory,
+                sizeBytes   = if (f.isFile) f.length() else 0L
+            )
+        } ?: emptyList()
+    }
+
+    /**
+     * Reads the file at [systemPath] (relative to [appFilesRoot]) as raw bytes.
+     *
+     * @return file content, or `null` if the path does not exist or is a directory
+     */
+    fun readSystemFile(systemPath: String): ByteArray? {
+        val file = resolveSystemPath(systemPath)
+        return if (file.isFile) file.readBytes() else null
+    }
+
+    /**
+     * Writes [content] to [systemPath] (relative to [appFilesRoot]).
+     *
+     * Parent directories are created automatically.
+     *
+     * @return `true` if the write succeeded
+     */
+    fun writeSystemFile(systemPath: String, content: ByteArray): Boolean =
+        runCatching {
+            val file = resolveSystemPath(systemPath)
+            file.parentFile?.mkdirs()
+            file.writeBytes(content)
+            true
+        }.getOrDefault(false)
+
+    /**
+     * Deletes the file or directory tree at [systemPath] (relative to [appFilesRoot]).
+     *
+     * @return `true` if the path no longer exists after the call
+     */
+    fun deleteAtSystemPath(systemPath: String): Boolean =
+        resolveSystemPath(systemPath).deleteRecursively()
+
+    /**
+     * Returns `true` if [systemPath] (relative to [appFilesRoot]) exists.
+     */
+    fun existsAtSystemPath(systemPath: String): Boolean =
+        resolveSystemPath(systemPath).exists()
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System-path helper
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolves [systemPath] against [appFilesRoot].
+     *
+     * An empty string or `"/"` resolves to [appFilesRoot] itself; any other
+     * value is treated as a path segment relative to [appFilesRoot].
+     */
+    private fun resolveSystemPath(systemPath: String): File =
+        if (systemPath.isBlank() || systemPath == "/") {
+            File(appFilesRoot)
+        } else {
+            File(appFilesRoot, systemPath.trimStart('/'))
+        }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bulk import / export
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
      * Copies all files from [sourceDir] into the virtual data directory for
      * [packageName].

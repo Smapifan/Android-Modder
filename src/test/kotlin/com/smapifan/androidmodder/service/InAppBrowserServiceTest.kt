@@ -234,4 +234,132 @@ class InAppBrowserServiceTest {
         assertTrue(leafLine.length >= childLine.length,
             "Leaf file should be indented at least as much as child directory")
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System-path "root browser" (VIRTUAL_FS — data/ and data/data/ layout)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `browseSystemPath returns empty list for non-existent path`() {
+        assertTrue(browser().browseSystemPath("data/data/no.such.pkg").isEmpty())
+    }
+
+    @Test
+    fun `browseSystemPath lists entries at data data pkg directory`() {
+        val br  = browser()
+        val pkg = "com.example.game"
+        br.writeSystemBinaryFile("data/data/$pkg/files/save.dat", "data".toByteArray())
+
+        val entries = br.browseSystemPath("data/data/$pkg")
+        assertEquals(1, entries.size)
+        assertEquals("files", entries[0].name)
+        assertTrue(entries[0].isDirectory)
+    }
+
+    @Test
+    fun `browseSystemPath sets packageName from data data path`() {
+        val br  = browser()
+        val pkg = "com.example.game"
+        br.writeSystemTextFile("data/data/$pkg/save.dat", "x")
+
+        val entries = br.browseSystemPath("data/data/$pkg")
+        assertTrue(entries.all { it.packageName == pkg })
+    }
+
+    @Test
+    fun `browseSystemPath sorts directories before files`() {
+        val br  = browser()
+        val pkg = "com.example.game"
+        br.writeSystemTextFile("data/data/$pkg/readme.txt", "info")
+        br.writeSystemTextFile("data/data/$pkg/files/save.dat", "data")
+
+        val entries = br.browseSystemPath("data/data/$pkg")
+        assertTrue(entries[0].isDirectory, "First entry should be a directory")
+        assertFalse(entries.last().isDirectory, "Last entry should be a file")
+    }
+
+    @Test
+    fun `listSystemPackages returns packages with virtual system dirs`() {
+        val br = browser()
+        br.writeSystemTextFile("data/data/com.game.a/save.dat", "a")
+        br.writeSystemTextFile("data/data/com.game.b/save.dat", "b")
+
+        val pkgs = br.listSystemPackages()
+        assertTrue("com.game.a" in pkgs)
+        assertTrue("com.game.b" in pkgs)
+    }
+
+    @Test
+    fun `readSystemTextFile returns content of written file`() {
+        val br = browser()
+        br.writeSystemTextFile("data/data/com.example.game/save.dat", "coins=99")
+        assertEquals("coins=99", br.readSystemTextFile("data/data/com.example.game/save.dat"))
+    }
+
+    @Test
+    fun `readSystemTextFile returns null for missing file`() {
+        assertNull(browser().readSystemTextFile("data/data/com.example.game/missing.dat"))
+    }
+
+    @Test
+    fun `readSystemBinaryFile returns bytes of written file`() {
+        val br   = browser()
+        val data = byteArrayOf(1, 2, 3, 0xFF.toByte())
+        assertTrue(br.writeSystemBinaryFile("data/data/com.example.game/data.bin", data))
+
+        val read = br.readSystemBinaryFile("data/data/com.example.game/data.bin")
+        assertNotNull(read)
+        assertTrue(data.contentEquals(read))
+    }
+
+    @Test
+    fun `writeSystemTextFile creates parent directories automatically`() {
+        val br = browser()
+        assertTrue(br.writeSystemTextFile("data/data/com.example.game/deep/nested/file.txt", "hello"))
+        assertEquals("hello", br.readSystemTextFile("data/data/com.example.game/deep/nested/file.txt"))
+    }
+
+    @Test
+    fun `deleteAtSystemPath removes a file`() {
+        val br   = browser()
+        val path = "data/data/com.example.game/del.dat"
+        br.writeSystemTextFile(path, "bye")
+        assertTrue(br.deleteAtSystemPath(path))
+        assertNull(br.readSystemTextFile(path))
+    }
+
+    @Test
+    fun `deleteAtSystemPath removes a directory tree`() {
+        val br  = browser()
+        val pkg = "com.example.game"
+        br.writeSystemTextFile("data/data/$pkg/tree/a.dat", "a")
+        br.writeSystemTextFile("data/data/$pkg/tree/b.dat", "b")
+
+        assertTrue(br.deleteAtSystemPath("data/data/$pkg/tree"))
+        assertTrue(br.browseSystemPath("data/data/$pkg").none { it.name == "tree" })
+    }
+
+    @Test
+    fun `buildSystemTree contains file names`() {
+        val br  = browser()
+        val pkg = "com.example.game"
+        br.writeSystemTextFile("data/data/$pkg/files/save.dat", "data")
+        br.writeSystemTextFile("data/data/$pkg/files/config.json", "{}")
+
+        val tree = br.buildSystemTree("data/data/$pkg")
+        assertTrue(tree.contains("files"), "Tree must mention 'files' directory")
+        assertTrue(tree.contains("save.dat"), "Tree must mention 'save.dat'")
+        assertTrue(tree.contains("config.json"), "Tree must mention 'config.json'")
+    }
+
+    @Test
+    fun `buildSystemTree shows file sizes`() {
+        val br      = browser()
+        val content = "hello"
+        br.writeSystemTextFile("data/data/com.example.game/data.txt", content)
+
+        val tree = br.buildSystemTree("data/data/com.example.game")
+        assertTrue(tree.contains("${content.length} bytes"),
+            "Tree should show file size; got: $tree")
+    }
 }
