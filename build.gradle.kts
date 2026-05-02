@@ -40,8 +40,8 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (signingReady) {
+        if (signingReady) {
+            create("release") {
                 storeFile = file(storeFilePath)
                 this.storePassword = storePassword
                 this.keyAlias = keyAlias
@@ -60,6 +60,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            if (signingReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -86,6 +91,14 @@ android {
 }
 
 
+
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("Android-Modder-${variant.buildType}-$appVersionName.apk")
+        }
+    }
+}
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
