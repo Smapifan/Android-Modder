@@ -1,3 +1,6 @@
+// Data class defining a single cheat operation (ADD/SUBTRACT/SET) for a named save-file field.
+// Datenklasse, die eine einzelne Cheat-Operation (ADD/SUBTRACT/SET) für ein benanntes Spielstand-Feld definiert.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

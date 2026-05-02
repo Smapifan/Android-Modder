@@ -1,3 +1,6 @@
+// Performs one-time VM initialisation by installing bundled system APKs into the virtual sandbox on first boot.
+// Führt die einmalige VM-Initialisierung durch, indem gebündelte System-APKs beim ersten Start in die virtuelle Sandbox installiert werden.
+
 package com.smapifan.androidmodder.service
 
 import java.io.InputStream

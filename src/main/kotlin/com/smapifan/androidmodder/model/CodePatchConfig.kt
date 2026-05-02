@@ -1,3 +1,6 @@
+// JSON drop-in configuration container holding a list of code patch definitions for a specific game.
+// JSON-Konfigurationscontainer mit einer Liste von Code-Patch-Definitionen für ein bestimmtes Spiel.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

@@ -1,3 +1,6 @@
+// Reads and writes a running Android app's live process memory via /proc/<pid>/mem without requiring root.
+// Liest und schreibt den Live-Prozessspeicher einer laufenden Android-App über /proc/<pid>/mem ohne Root-Rechte.
+
 package com.smapifan.androidmodder.service
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -1,3 +1,6 @@
+// Data class representing a user-supplied mod file with field-level patches and floating overlay actions.
+// Datenklasse, die eine benutzerdefinierte Mod-Datei mit Feld-Patches und schwebenden Overlay-Aktionen repräsentiert.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

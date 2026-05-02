@@ -1,3 +1,6 @@
+// JVM-side coordinator for the floating mod overlay, handling autosave polling and on-demand patch actions.
+// JVM-seitiger Koordinator für das schwebende Mod-Overlay mit Autosave-Polling und On-Demand-Patch-Aktionen.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition

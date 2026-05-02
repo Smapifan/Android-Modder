@@ -1,3 +1,6 @@
+// Data class holding the exit code, stdout and stderr of a completed shell command.
+// Datenklasse mit Exit-Code, Standardausgabe und Fehlerausgabe eines abgeschlossenen Shell-Befehls.
+
 package com.smapifan.androidmodder.service
 
 /**

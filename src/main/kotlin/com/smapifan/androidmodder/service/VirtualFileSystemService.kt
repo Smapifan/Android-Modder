@@ -1,3 +1,6 @@
+// Manages the in-app virtual filesystem where each guest app gets its own isolated sandboxed data directory.
+// Verwaltet das In-App-virtuelle Dateisystem, in dem jede Gast-App ein eigenes isoliertes Sandbox-Datenverzeichnis erhält.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.VirtualFsEntry

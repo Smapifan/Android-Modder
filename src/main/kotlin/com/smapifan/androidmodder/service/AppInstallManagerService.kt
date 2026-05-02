@@ -1,3 +1,6 @@
+// Installs APK files into Android-Modder's virtual sandbox and manages their isolated data directories.
+// Installiert APK-Dateien in die virtuelle Sandbox von Android-Modder und verwaltet deren isolierte Datenverzeichnisse.
+
 package com.smapifan.androidmodder.service
 
 import android.content.pm.PackageManager

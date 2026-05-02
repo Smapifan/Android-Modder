@@ -1,3 +1,6 @@
+// Loads locale-specific UI strings from properties files with automatic fallback to English.
+// Lädt lokalisierte UI-Strings aus Properties-Dateien mit automatischem Fallback auf Englisch.
+
 package com.smapifan.androidmodder.service
 
 import java.text.MessageFormat

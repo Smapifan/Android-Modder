@@ -1,3 +1,6 @@
+// Describes a single universal source-code or bytecode constant patch applicable across all major programming languages.
+// Beschreibt einen universellen Quellcode- oder Bytecode-Konstanten-Patch, der für alle gängigen Programmiersprachen gilt.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable

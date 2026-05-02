@@ -1,3 +1,6 @@
+// Universal source-code/bytecode patcher that replaces named constant values in text files across all major languages.
+// Universeller Quellcode-/Bytecode-Patcher, der benannte Konstantenwerte in Textdateien aller gängigen Sprachen ersetzt.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CodePatchDefinition

@@ -40,8 +40,11 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (signingReady) {
+        // Only create the signing config when all credentials are present.
+        // AGP 8.x auto-links any config named "release" to the release build type,
+        // so an empty config would still cause NPE at package time.
+        if (signingReady) {
+            create("release") {
                 storeFile = file(storeFilePath)
                 this.storePassword = storePassword
                 this.keyAlias = keyAlias
@@ -60,6 +63,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Sign debug builds with the same JKS when credentials are available,
+            // so both build types share one certificate and can upgrade each other.
+            if (signingReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -85,7 +95,30 @@ android {
     }
 }
 
-
+// Rename APK outputs to "Android-Modder-{buildType}-{versionName}.apk" for easy identification.
+// VariantOutput.outputFileName was removed from the AGP 8.x public API, so we rename on disk
+// inside a doLast hook on each assemble task instead.
+listOf("release", "debug").forEach { buildType ->
+    val taskName = "assemble${buildType.replaceFirstChar { it.uppercaseChar() }}"
+    tasks.configureEach {
+        if (name == taskName) {
+            doLast {
+                val outDir = file("build/outputs/apk/$buildType")
+                if (!outDir.isDirectory) return@doLast
+                outDir.listFiles()
+                    ?.filter { it.extension == "apk" }
+                    ?.forEach { apk ->
+                        val target = File(apk.parent, "Android-Modder-$buildType-$appVersionName.apk")
+                        if (apk.absolutePath != target.absolutePath) {
+                            if (!apk.renameTo(target)) {
+                                logger.warn("[Android-Modder] Could not rename ${apk.name} → ${target.name}")
+                            }
+                        }
+                    }
+            }
+        }
+    }
+}
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")

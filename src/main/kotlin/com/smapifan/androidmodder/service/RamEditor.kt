@@ -1,3 +1,6 @@
+// Multi-type companion to ProcessMemoryService for reading and patching all primitive data types in live process memory.
+// Mehrtypiger Begleiter zum ProcessMemoryService zum Lesen und Patchen aller primitiven Datentypen im Live-Prozessspeicher.
+
 package com.smapifan.androidmodder.service
 
 import java.nio.ByteBuffer

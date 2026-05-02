@@ -1,3 +1,6 @@
+// Loads and applies user-supplied *.mod files (field patches and overlay definitions) to workspace save files.
+// Lädt und wendet benutzerdefinierte *.mod-Dateien (Feld-Patches und Overlay-Definitionen) auf Spielstanddateien im Workspace an.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.CheatDefinition

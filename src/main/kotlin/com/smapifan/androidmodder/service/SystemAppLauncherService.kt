@@ -1,3 +1,6 @@
+// Launches VM system apps with VIRTUAL_FS data-access strategy enforced, delegating to GameLauncherService.
+// Startet VM-System-Apps mit erzwungener VIRTUAL_FS-Datenzugriffsstrategie und delegiert an den GameLauncherService.
+
 package com.smapifan.androidmodder.service
 
 import com.smapifan.androidmodder.model.DataAccessStrategy

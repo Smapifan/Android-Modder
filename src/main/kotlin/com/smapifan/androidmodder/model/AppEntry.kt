@@ -1,3 +1,6 @@
+// Represents a single app entry in the curated application catalog.
+// Repräsentiert einen einzelnen App-Eintrag im kuratierten App-Katalog.
+
 package com.smapifan.androidmodder.model
 
 import kotlinx.serialization.Serializable
