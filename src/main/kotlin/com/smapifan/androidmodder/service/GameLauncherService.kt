@@ -75,7 +75,7 @@ import java.nio.file.Path
  * @param processMemory    optional live-memory injection service; used when
  *                         [DataAccessStrategy.PROCESS_MEMORY] is selected
  */
-class GameLauncherService(
+open class GameLauncherService(
     private val cheats: List<CheatDefinition> = emptyList(),
     private val workspaceService: ModWorkspaceService = ModWorkspaceService(),
     private val cheatApplier: CheatApplier = CheatApplier(),
@@ -102,7 +102,7 @@ class GameLauncherService(
      * @param postHooks  optional callbacks run after game exit, before import
      * @return the [ShellResult] of the `am start` command
      */
-    fun launch(
+    open fun launch(
         workspace: Path,
         config: GameLaunchConfig,
         preHooks: List<() -> Unit> = emptyList(),
